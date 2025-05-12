@@ -1,0 +1,161 @@
+{block title}Pokročilé vyhledávání{/block}
+
+{block content}
+<div class="mb-4">
+    <h1>Pokročilé vyhledávání</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-filter me-1"></i> Vyhledávací filtry</h5>
+            </div>
+            <div class="card-body">
+                {control searchForm}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <!-- Search Results -->
+        {if isset($results['addons']) && $results['addons']->getItems()->count() > 0}
+            <div class="card mb-4">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Výsledky vyhledávání ({$results['addons']->getTotalCount()})</h5>
+                    <span class="badge bg-primary">{$results['addons']->getPage()} / {$results['addons']->getPages()}</span>
+                </div>
+                <div class="card-body">
+                    {if $query}
+                        <div class="alert alert-info mb-4">
+                            <i class="fas fa-search me-1"></i> Výsledky vyhledávání pro: <strong>{$query}</strong>
+                            
+                            {if isset($filters) && count($filters) > 0}
+                                <div class="mt-2">
+                                    <strong>Použité filtry:</strong>
+                                    <ul class="mb-0">
+                                        {if isset($filters['category_ids'])}
+                                            <li>Kategorie: {implode(', ', $filters['category_ids'])}</li>
+                                        {/if}
+                                        {if isset($filters['tag_ids'])}
+                                            <li>Tagy: {implode(', ', $filters['tag_ids'])}</li>
+                                        {/if}
+                                        {if isset($filters['min_rating'])}
+                                            <li>Minimální hodnocení: {$filters['min_rating']}</li>
+                                        {/if}
+                                        {if isset($filters['kodi_version'])}
+                                            <li>Verze Kodi: {$filters['kodi_version']}</li>
+                                        {/if}
+                                        {if isset($filters['sort_by']) && isset($filters['sort_dir'])}
+                                            <li>Řazení: {$filters['sort_by']} {$filters['sort_dir']}</li>
+                                        {/if}
+                                    </ul>
+                                </div>
+                            {/if}
+                        </div>
+                    {/if}
+                    
+                    <div class="list-group">
+                        {foreach $results['addons']->getItems() as $addon}
+                            <div class="list-group-item">
+                                <div class="row">
+                                    <div class="col-md-2">
+                                        <div style="width: 80px; height: 80px;">
+                                            {if $addon->icon_url}
+                                                <img src="{$basePath}/uploads/{$addon->icon_url}" class="img-fluid rounded" alt="{$addon->name}">
+                                            {else}
+                                                <div class="d-flex justify-content-center align-items-center h-100 bg-light rounded">
+                                                    <i class="fas fa-cube fa-2x text-secondary"></i>
+                                                </div>
+                                            {/if}
+                                        </div>
+                                    </div>
+                                    <div class="col-md-7">
+                                        <h5 class="mb-1">
+                                            <a href="{link Addon:detail, $addon->slug}" class="text-decoration-none">{$addon->name}</a>
+                                        </h5>
+                                        <div class="mb-2">
+                                            {for $i = 1; $i <= 5; $i++}
+                                                <i class="fas fa-star {if $i <= $addon->rating}text-warning{else}text-muted{/if}"></i>
+                                            {/for}
+                                            <small class="text-muted ms-1">({$addon->rating})</small>
+                                            <small class="text-muted ms-3">
+                                                <i class="fas fa-download me-1"></i> {$addon->downloads_count} stažení
+                                            </small>
+                                        </div>
+                                        <p class="mb-1 small">
+                                            <strong>Verze:</strong> {$addon->version}
+                                            {if $addon->kodi_version_min || $addon->kodi_version_max}
+                                                <span class="ms-3">
+                                                    <strong>Kodi:</strong> 
+                                                    {if $addon->kodi_version_min && $addon->kodi_version_max}
+                                                        {$addon->kodi_version_min} - {$addon->kodi_version_max}
+                                                    {elseif $addon->kodi_version_min}
+                                                        {$addon->kodi_version_min}+
+                                                    {elseif $addon->kodi_version_max}
+                                                        až {$addon->kodi_version_max}
+                                                    {/if}
+                                                </span>
+                                            {/if}
+                                        </p>
+                                        <p class="mb-0 small text-muted">
+                                            {if $addon->description}
+                                                {$addon->description|truncate:150}
+                                            {else}
+                                                Žádný popis není k dispozici.
+                                            {/if}
+                                        </p>
+                                    </div>
+                                    <div class="col-md-3 d-flex align-items-center justify-content-end">
+                                        <div class="btn-group">
+                                            <a href="{link Addon:detail, $addon->slug}" class="btn btn-outline-primary">
+                                                <i class="fas fa-info-circle me-1"></i> Detail
+                                            </a>
+                                            <a href="{link Addon:download, $addon->slug}" class="btn btn-primary">
+                                                <i class="fas fa-download me-1"></i> Stáhnout
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {/foreach}
+                    </div>
+                    
+                    <!-- Pagination -->
+                    {if $results['addons']->getPages() > 1}
+                        <nav class="mt-4">
+                            <ul class="pagination justify-content-center">
+                                <li class="page-item {if !$results['addons']->hasPreviousPage()}disabled{/if}">
+                                    <a class="page-link" href="{link this, 'query' => $query, 'page' => $results['addons']->getPreviousPage()}">&laquo; Předchozí</a>
+                                </li>
+                                
+                                {for $i = 1; $i <= $results['addons']->getPages(); $i++}
+                                    <li class="page-item {if $i == $page}active{/if}">
+                                        <a class="page-link" href="{link this, 'query' => $query, 'page' => $i}">{$i}</a>
+                                    </li>
+                                {/for}
+                                
+                                <li class="page-item {if !$results['addons']->hasNextPage()}disabled{/if}">
+                                    <a class="page-link" href="{link this, 'query' => $query, 'page' => $results['addons']->getNextPage()}">Další &raquo;</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    {/if}
+                </div>
+            </div>
+        {elseif $query || isset($filters) && count($filters) > 0}
+            <div class="alert alert-warning">
+                <i class="fas fa-info-circle me-1"></i> Nebyly nalezeny žádné doplňky odpovídající vašim kritériím. Zkuste upravit filtry nebo <a href="{link Addon:add}" class="alert-link">přidejte nový doplněk</a>.
+            </div>
+        {else}
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-search fa-4x text-muted mb-3"></i>
+                    <h3>Pokročilé vyhledávání doplňků</h3>
+                    <p class="text-muted">Použijte filtry na levé straně pro vyhledávání doplňků podle různých kritérií.</p>
+                </div>
+            </div>
+        {/if}
+    </div>
+</div>
+{/block}

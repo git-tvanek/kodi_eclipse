@@ -1,0 +1,82 @@
+{block title}{if $sort == 'rating'}Nejlépe hodnocené doplňky{elseif $sort == 'created_at'}Nejnovější doplňky{else}Procházet doplňky{/if}{/block}
+
+{block content}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>
+        <i class="fas fa-cube me-2"></i>
+        {if $sort == 'rating'}
+            Nejlépe hodnocené doplňky
+        {elseif $sort == 'created_at'}
+            Nejnovější doplňky
+        {else}
+            Procházet doplňky
+        {/if}
+    </h1>
+    <a href="{link Addon:add}" class="btn btn-primary">
+        <i class="fas fa-plus me-1"></i> Přidat nový doplněk
+    </a>
+</div>
+
+{if isset($addons) && $addons->count() > 0}
+    <div class="row row-cols-1 row-cols-md-3 g-4">
+        <div n:foreach="$addons as $addon" class="col">
+            <div class="card h-100 hover-shadow">
+                <div class="card-img-top position-relative" style="height: 150px; background-color: #f8f9fa;">
+                    {if $addon->icon_url}
+                        <img src="{$basePath}/uploads/{$addon->icon_url}" class="img-fluid p-3" alt="{$addon->name}" style="max-height: 100%;">
+                    {else}
+                        <div class="d-flex justify-content-center align-items-center h-100">
+                            <i class="fas fa-cube fa-3x text-secondary"></i>
+                        </div>
+                    {/if}
+                    <div class="position-absolute top-0 end-0 p-2">
+                        <span class="badge bg-primary rounded-pill">
+                            <i class="fas fa-download me-1"></i> {$addon->downloads_count}
+                        </span>
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <a href="{link Addon:detail, $addon->slug}" class="text-decoration-none">{$addon->name}</a>
+                    </h5>
+                    
+                    <div class="mb-2">
+                        {for $i = 1; $i <= 5; $i++}
+                            {if $i <= $addon->rating}
+                                <i class="fas fa-star text-warning"></i>
+                            {elseif $i <= $addon->rating + 0.5}
+                                <i class="fas fa-star-half-alt text-warning"></i>
+                            {else}
+                                <i class="far fa-star text-warning"></i>
+                            {/if}
+                        {/for}
+                        <small class="text-muted ms-1">({$addon->rating})</small>
+                    </div>
+                    
+                    <p class="card-text small text-muted">
+                        {if $addon->description}
+                            {$addon->description|truncate:100}
+                        {else}
+                            Žádný popis není k dispozici.
+                        {/if}
+                    </p>
+                </div>
+                
+                <div class="card-footer bg-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">Verze: {$addon->version}</small>
+                        <a href="{link Addon:download, $addon->slug}" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-download me-1"></i> Stáhnout
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{else}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle me-1"></i> Nebyly nalezeny žádné doplňky. Zkuste upravit filtry nebo <a href="{link Addon:add}" class="alert-link">přidat nový doplněk</a>.
+    </div>
+{/if}
+{/block}

@@ -1,0 +1,72 @@
+{block title}Upravit autora{/block}
+
+{block content}
+<div class="mb-4">
+    <h1>Upravit autora</h1>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{link Home:}">Domů</a></li>
+            <li class="breadcrumb-item"><a href="{link Author:}">Autoři</a></li>
+            <li class="breadcrumb-item"><a href="{link Author:detail, $author->id}">{$author->name}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Upravit</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Formulář pro úpravu autora</h5>
+            </div>
+            <div class="card-body">
+                {control authorForm}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Nápověda</h5>
+            </div>
+            <div class="card-body">
+                <p>Zde můžete upravit informace o autorovi. Jméno autora je povinné, ostatní údaje jsou volitelné.</p>
+                
+                <div class="alert alert-warning mt-3">
+                    <i class="fas fa-exclamation-triangle me-1"></i> <strong>Upozornění:</strong> Úprava jména autora může ovlivnit odkazy a způsob, jakým je autor zobrazen v seznamu doplňků.
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Doplňky od tohoto autora</h5>
+            </div>
+            <div class="card-body">
+                {if isset($author->addons) && count($author->addons) > 0}
+                    <ul class="list-group list-group-flush">
+                        {foreach $author->addons as $addon}
+                            <li class="list-group-item px-0">
+                                <a href="{link Addon:detail, $addon->slug}">{$addon->name}</a>
+                            </li>
+                        {/foreach}
+                    </ul>
+                    
+                    {if count($author->addons) > 5}
+                        <a href="{link Author:detail, $author->id}" class="btn btn-sm btn-outline-primary mt-3 w-100">
+                            Zobrazit všechny doplňky
+                        </a>
+                    {/if}
+                {else}
+                    <p class="text-muted mb-0">Tento autor zatím nemá žádné doplňky.</p>
+                {/if}
+                
+                <a href="{link Addon:add, 'author_id' => $author->id}" class="btn btn-sm btn-primary mt-3 w-100">
+                    <i class="fas fa-plus me-1"></i> Přidat nový doplněk
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{/block}

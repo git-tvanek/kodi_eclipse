@@ -1,0 +1,17 @@
+{block content}
+<h1>Přidat kategorii</h1>
+
+<form n:name="categoryForm">
+    <div class="form-group">
+        <label n:name="name">Název kategorie</label>
+        <input n:name="name" class="form-control">
+    </div>
+    
+    <div class="form-group">
+        <label n:name="description">Popis</label>
+        <textarea n:name="description" class="form-control"></textarea>
+    </div>
+    
+    <button n:name="save" class="btn btn-primary">Uložit</button>
+</form>
+{/block}

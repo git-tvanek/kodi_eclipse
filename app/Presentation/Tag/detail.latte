@@ -1,0 +1,224 @@
+{block title}{$tag->name}{/block}
+
+{block content}
+<div class="mb-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{link Home:}">Domů</a></li>
+            <li class="breadcrumb-item"><a href="{link Tag:}">Tagy</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{$tag->name}</li>
+        </ol>
+    </nav>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1><i class="fas fa-tag me-2"></i>{$tag->name}</h1>
+        <p class="text-muted">
+            {if isset($addons)}
+                {$addons->getTotalCount()} doplňků s tímto tagem
+            {/if}
+        </p>
+    </div>
+    <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="tagActions" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-cog"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="tagActions">
+            <li><a class="dropdown-item" href="{link Tag:edit, $tag->id}"><i class="fas fa-edit me-1"></i> Upravit tag</a></li>
+            <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#deleteTagModal"><i class="fas fa-trash me-1"></i> Smazat tag</a></li>
+        </ul>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- Addons with this tag -->
+        {if isset($addons) && $addons->getItems()->count() > 0}
+            <div class="card mb-4">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Doplňky s tagem: {$tag->name}</h5>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            Řazení
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'name', 'sort_dir' => 'ASC'}">Název (A-Z)</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'name', 'sort_dir' => 'DESC'}">Název (Z-A)</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'downloads_count', 'sort_dir' => 'DESC'}">Nejvíce stahované</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'rating', 'sort_dir' => 'DESC'}">Nejlépe hodnocené</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'created_at', 'sort_dir' => 'DESC'}">Nejnovější</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'created_at', 'sort_dir' => 'ASC'}">Nejstarší</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row row-cols-1 row-cols-md-3 g-4">
+                        {foreach $addons->getItems() as $addon}
+                            <div class="col">
+                                <div class="card h-100 hover-shadow">
+                                    <div class="card-img-top position-relative" style="height: 150px; background-color: #f8f9fa;">
+                                        {if $addon->icon_url}
+                                            <img src="{$basePath}/uploads/{$addon->icon_url}" class="img-fluid p-3" alt="{$addon->name}" style="max-height: 100%;">
+                                        {else}
+                                            <div class="d-flex justify-content-center align-items-center h-100">
+                                                <i class="fas fa-cube fa-3x text-secondary"></i>
+                                            </div>
+                                        {/if}
+                                        <div class="position-absolute top-0 end-0 p-2">
+                                            <span class="badge bg-primary rounded-pill">
+                                                <i class="fas fa-download me-1"></i> {$addon->downloads_count}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <a href="{link Addon:detail, $addon->slug}" class="text-decoration-none">{$addon->name}</a>
+                                        </h5>
+                                        
+                                        <div class="mb-2">
+                                            {for $i = 1; $i <= 5; $i++}
+                                                {if $i <= $addon->rating}
+                                                    <i class="fas fa-star text-warning"></i>
+                                                {elseif $i <= $addon->rating + 0.5}
+                                                    <i class="fas fa-star-half-alt text-warning"></i>
+                                                {else}
+                                                    <i class="far fa-star text-warning"></i>
+                                                {/if}
+                                            {/for}
+                                            <small class="text-muted ms-1">({$addon->rating})</small>
+                                        </div>
+                                        
+                                        <p class="card-text small text-muted">
+                                            {if $addon->description}
+                                                {$addon->description|truncate:100}
+                                            {else}
+                                                Žádný popis není k dispozici.
+                                            {/if}
+                                        </p>
+                                    </div>
+                                    
+                                    <div class="card-footer bg-white">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">Verze: {$addon->version}</small>
+                                            <a href="{link Addon:download, $addon->slug}" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-download me-1"></i> Stáhnout
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {/foreach}
+                    </div>
+                    
+                    <!-- Pagination -->
+                    {if $addons->getPages() > 1}
+                        <nav class="mt-4">
+                            <ul class="pagination justify-content-center">
+                                <li class="page-item {if !$addons->hasPreviousPage()}disabled{/if}">
+                                    <a class="page-link" href="{link this, 'page' => $addons->getPreviousPage()}">&laquo; Předchozí</a>
+                                </li>
+                                
+                                {for $i = 1; $i <= $addons->getPages(); $i++}
+                                    <li class="page-item {if $i == $page}active{/if}">
+                                        <a class="page-link" href="{link this, 'page' => $i}">{$i}</a>
+                                    </li>
+                                {/for}
+                                
+                                <li class="page-item {if !$addons->hasNextPage()}disabled{/if}">
+                                    <a class="page-link" href="{link this, 'page' => $addons->getNextPage()}">Další &raquo;</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    {/if}
+                </div>
+            </div>
+        {else}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-1"></i> S tímto tagem zatím nejsou spojeny žádné doplňky. <a href="{link Addon:add}" class="alert-link">Přidejte doplněk s tímto tagem</a>.
+            </div>
+        {/if}
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Tag Info -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Informace o tagu</h5>
+            </div>
+            <div class="card-body">
+                <p class="mb-2">
+                    <strong>Název:</strong> {$tag->name}
+                </p>
+                <p class="mb-2">
+                    <strong>Slug:</strong> <code>{$tag->slug}</code>
+                </p>
+            </div>
+        </div>
+        
+        <!-- Related Tags -->
+        {if isset($relatedTags) && count($relatedTags) > 0}
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Související tagy</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap gap-2">
+                        {foreach $relatedTags as $relatedTag}
+                            <a href="{link Tag:detail, $relatedTag['tag']->slug}" class="btn btn-sm btn-outline-secondary">
+                            {$relatedTag['tag']->name} 
+                            <span class="badge bg-light text-dark">{$relatedTag['frequency']}</span>
+                            </a>
+                        {/foreach}
+                    </div>
+                </div>
+            </div>
+        {/if}
+        
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Rychlé akce</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{link Addon:add, 'tag_ids' => [$tag->id]}" class="btn btn-primary">
+                        <i class="fas fa-plus me-1"></i> Přidat doplněk s tímto tagem
+                    </a>
+                    <a href="{link Tag:edit, $tag->id}" class="btn btn-outline-secondary">
+                        <i class="fas fa-edit me-1"></i> Upravit tag
+                    </a>
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteTagModal">
+                        <i class="fas fa-trash me-1"></i> Smazat tag
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteTagModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Potvrdit smazání</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Opravdu chcete smazat tag <strong>{$tag->name}</strong>? Tato akce je nevratná.</p>
+                {if isset($addons) && $addons->getTotalCount() > 0}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-1"></i> Tento tag je používán u {$addons->getTotalCount()} doplňků. Smazáním tagu dojde k jeho odstranění ze všech těchto doplňků.
+                    </div>
+                {/if}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zrušit</button>
+                <a href="{link Tag:delete, $tag->id}" class="btn btn-danger">Smazat tag</a>
+            </div>
+        </div>
+    </div>
+</div>
+{/block}

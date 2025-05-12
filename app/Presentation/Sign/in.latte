@@ -1,0 +1,25 @@
+{block title}Přihlášení{/block}
+
+{block content}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0"><i class="fas fa-sign-in-alt me-2"></i>Přihlášení</h3>
+            </div>
+            <div class="card-body">
+                {control signInForm}
+                
+                <hr class="my-4">
+                
+                <div class="text-center">
+                    <p>Ještě nemáte účet?</p>
+                    <a href="{link Sign:up}" class="btn btn-outline-primary">
+                        <i class="fas fa-user-plus me-1"></i> Zaregistrujte se
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{/block}

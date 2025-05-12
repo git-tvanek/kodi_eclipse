@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{ifset title}{include title|stripHtml} | {/ifset}xAddons</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{$basePath}/css/style.css">
+    
+    {block head}{/block}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{link Home:}">
+                <i class="fas fa-puzzle-piece me-2"></i>xAddons
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarMain">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link {if $presenter->getName() === 'Addon'}active{/if}" href="{link Addon:}">
+                            <i class="fas fa-cube me-1"></i> Doplňky
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {if $presenter->getName() === 'Category'}active{/if}" href="{link Category:}">
+                            <i class="fas fa-folder me-1"></i> Kategorie
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {if $presenter->getName() === 'Author'}active{/if}" href="{link Author:}">
+                            <i class="fas fa-users me-1"></i> Autoři
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {if $presenter->getName() === 'Tag'}active{/if}" href="{link Tag:}">
+                            <i class="fas fa-tags me-1"></i> Tagy
+                        </a>
+                    </li>
+                    
+                    {* Zobrazení sekce pro administrátory - pouze pokud má uživatel roli admin *}
+                    {if isset($userLoggedIn) && $userLoggedIn && isset($isAdmin) && $isAdmin}
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-cogs me-1"></i> Administrace
+                            </a>
+                            <ul class="dropdown-menu" aria-labelledby="adminDropdown">
+                                <li><a class="dropdown-item" href="{link Dashboard:}"><i class="fas fa-tachometer-alt me-1"></i> Dashboard</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{link Dashboard:addonStats}"><i class="fas fa-chart-line me-1"></i> Statistiky doplňků</a></li>
+                                <li><a class="dropdown-item" href="{link Dashboard:categoryStats}"><i class="fas fa-chart-pie me-1"></i> Statistiky kategorií</a></li>
+                                <li><a class="dropdown-item" href="{link Dashboard:authorStats}"><i class="fas fa-user-chart me-1"></i> Statistiky autorů</a></li>
+                                <li><a class="dropdown-item" href="{link Dashboard:reviewStats}"><i class="fas fa-star me-1"></i> Statistiky recenzí</a></li>
+                            </ul>
+                        </li>
+                    {/if}
+                </ul>
+                
+                <form class="d-flex me-3" action="{link Search:}" method="get">
+                    <input class="form-control me-2" type="search" name="query" placeholder="Hledat doplňky..." 
+                           value="{$presenter->getParameter('query')}">
+                    <button class="btn btn-light" type="submit">
+                        <i class="fas fa-search"></i>
+                    </button>
+                </form>
+                
+                {* Zobrazení přihlášeného uživatele nebo přihlašovacího tlačítka *}
+                {if isset($userLoggedIn) && $userLoggedIn}
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle text-white" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user-circle me-1"></i> {$user->identity->username ?? 'Uživatel'}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li><a class="dropdown-item" href="{link User:profile}"><i class="fas fa-user me-1"></i> Můj profil</a></li>
+                            <li><a class="dropdown-item" href="{link User:myAddons}"><i class="fas fa-cube me-1"></i> Moje doplňky</a></li>
+                            <li><a class="dropdown-item" href="{link User:myReviews}"><i class="fas fa-star me-1"></i> Moje recenze</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{link Sign:out}"><i class="fas fa-sign-out-alt me-1"></i> Odhlásit se</a></li>
+                        </ul>
+                    </div>
+                {else}
+                    <div class="d-flex">
+                        <a href="{link Sign:in}" class="btn btn-outline-light me-2">
+                            <i class="fas fa-sign-in-alt me-1"></i> Přihlásit
+                        </a>
+                        <a href="{link Sign:up}" class="btn btn-light">
+                            <i class="fas fa-user-plus me-1"></i> Registrovat
+                        </a>
+                    </div>
+                {/if}
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Flash messages -->
+    <div class="container mt-3">
+        <div n:foreach="$flashes as $flash" class="alert alert-{$flash->type} alert-dismissible fade show">
+            {$flash->message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+    
+    <!-- Main content -->
+    <main class="container py-4">
+        {include content}
+    </main>
+    
+    <!-- Footer -->
+    <footer class="bg-dark text-white py-4 mt-5">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>xAddons</h5>
+                    <p>Objevujte a sdílejte nejlepší doplňky pro Kodi media center.</p>
+                </div>
+                <div class="col-md-3">
+                    <h5>Rychlé odkazy</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="{link Home:}" class="text-white">Domů</a></li>
+                        <li><a href="{link Addon:}" class="text-white">Doplňky</a></li>
+                        <li><a href="{link Category:}" class="text-white">Kategorie</a></li>
+                        <li><a href="{link Search:advanced}" class="text-white">Pokročilé vyhledávání</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-3">
+                    <h5>Zdroje</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="https://kodi.tv/" class="text-white" target="_blank">Oficiální stránka Kodi</a></li>
+                        <li><a href="https://kodi.wiki/" class="text-white" target="_blank">Kodi Wiki</a></li>
+                        <li><a href="#" class="text-white">Nápověda & Dokumentace</a></li>
+                    </ul>
+                </div>
+            </div>
+            <hr>
+            <div class="text-center">
+                <p class="mb-0">&copy; {date('Y')} xAddons.cz. Všechna práva vyhrazena.</p>
+            </div>
+        </div>
+    </footer>
+    
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    {block scripts}{/block}
+</body>
+</html>

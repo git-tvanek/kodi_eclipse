@@ -1,0 +1,135 @@
+services:
+    # Router factory
+    - App\Core\RouterFactory::createRouter
+
+    # Repositories - definované jako továrny kvůli závislostem
+    addonRepository:
+        factory: App\Repository\AddonRepository
+    authorRepository:
+        factory: App\Repository\AuthorRepository
+    categoryRepository:
+        factory: App\Repository\CategoryRepository
+    reviewRepository:
+        class: App\Repository\ReviewRepository(@database.default, @addonRepository)
+    tagRepository:
+        factory: App\Repository\TagRepository
+
+    # Factories as classes
+    addonFactory:
+        class: App\Factory\AddonFactory
+    addonTagFactory:
+        class: App\Factory\AddonTagFactory
+    authorFactory:
+        class: App\Factory\AuthorFactory
+    categoryFactory:
+        class: App\Factory\CategoryFactory
+    reviewFactory:
+        class: App\Factory\ReviewFactory
+    screenshotFactory:
+        class: App\Factory\ScreenshotFactory
+    tagFactory:
+        class: App\Factory\TagFactory
+
+    # Form Factories
+    - App\Forms\Factory\AddonFormFactory
+    - App\Forms\Factory\AuthorFormFactory
+    - App\Forms\Factory\CategoryFormFactory
+    - App\Forms\Factory\ReviewFormFactory
+    - App\Forms\Factory\SearchFormFactory
+    - App\Forms\Factory\TagFormFactory
+
+    # Services
+    addonService:
+        factory: App\Service\AddonService(@addonRepository, @addonFactory, @screenshotFactory, %uploadsDir%)
+    authorService:
+        factory: App\Service\AuthorService(@authorRepository, @authorFactory)
+    categoryService:
+        factory: App\Service\CategoryService(@categoryRepository, @categoryFactory)
+    reviewService:
+        factory: App\Service\ReviewService(@reviewRepository, @reviewFactory)
+    searchService:
+        factory: App\Service\SearchService(@addonRepository, @authorRepository, @tagRepository, @categoryRepository)
+    statisticsService:
+        factory: App\Service\StatisticsService(@addonRepository, @authorRepository, @categoryRepository, @reviewRepository, @database.default)
+    tagService:
+        factory: App\Service\TagService(@tagRepository, @tagFactory)
+
+    # Alias service interfaces to their implementations
+    addonServiceAlias:
+        factory: @addonService
+        type: App\Service\IAddonService
+    authorServiceAlias:
+        factory: @authorService
+        type: App\Service\IAuthorService
+    categoryServiceAlias:
+        factory: @categoryService
+        type: App\Service\ICategoryService
+    reviewServiceAlias:
+        factory: @reviewService
+        type: App\Service\IReviewService
+    searchServiceAlias:
+        factory: @searchService
+        type: App\Service\ISearchService
+    statisticsServiceAlias:
+        factory: @statisticsService
+        type: App\Service\IStatisticsService
+    tagServiceAlias:
+        factory: @tagService
+        type: App\Service\ITagService
+
+    # Repository interfaces to implementations
+    addonRepositoryAlias:
+        factory: @addonRepository
+        type: App\Repository\Interface\IAddonRepository
+    authorRepositoryAlias:
+        factory: @authorRepository
+        type: App\Repository\Interface\IAuthorRepository
+    categoryRepositoryAlias:
+        factory: @categoryRepository
+        type: App\Repository\Interface\ICategoryRepository
+    reviewRepositoryAlias:
+        factory: @reviewRepository
+        type: App\Repository\Interface\IReviewRepository
+    tagRepositoryAlias:
+        factory: @tagRepository
+        type: App\Repository\Interface\ITagRepository
+    
+    # Factory interfaces to implementations
+    addonFactoryAlias:
+        factory: @addonFactory
+        type: App\Factory\Interface\IAddonFactory
+    addonTagFactoryAlias:
+        factory: @addonTagFactory
+        type: App\Factory\Interface\IAddonTagFactory
+    authorFactoryAlias:
+        factory: @authorFactory
+        type: App\Factory\Interface\IAuthorFactory
+    categoryFactoryAlias:
+        factory: @categoryFactory
+        type: App\Factory\Interface\ICategoryFactory
+    reviewFactoryAlias:
+        factory: @reviewFactory
+        type: App\Factory\Interface\IReviewFactory
+    screenshotFactoryAlias:
+        factory: @screenshotFactory
+        type: App\Factory\Interface\IScreenshotFactory
+    tagFactoryAlias:
+        factory: @tagFactory
+        type: App\Factory\Interface\ITagFactory
+
+    # Facades
+    - App\Facade\AddonFacade
+    - App\Facade\AuthorFacade
+    - App\Facade\CategoryFacade
+    - App\Facade\ReviewFacade
+    - App\Facade\SearchFacade
+    - App\Facade\StatisticsFacade
+    - App\Facade\TagFacade
+
+search:
+    - in: %appDir%
+      classes:
+        - *Facade
+        - *Factory
+        - *Repository
+        - *Service

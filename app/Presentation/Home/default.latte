@@ -1,0 +1,146 @@
+{block title}Domů{/block}
+
+{block content}
+<div class="jumbotron bg-light p-5 rounded">
+    <h1 class="display-15">xAddons.cz</h1>
+    <p class="lead">Objevujte, stahujte a sdílejte nejlepší doplňky pro Kodi media center.</p>
+    <hr class="my-4">
+    <p>Procházejte naši rozsáhlou sbírku doplňků organizovanou podle kategorií, autorů nebo tagů.</p>
+    <a class="btn btn-primary btn-lg" href="{link Addon:}">
+        <i class="fas fa-cube me-1"></i> Procházet doplňky
+    </a>
+    <a class="btn btn-outline-primary btn-lg ms-2" href="{link Search:advanced}">
+        <i class="fas fa-search me-1"></i> Pokročilé vyhledávání
+    </a>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-award me-1"></i> Populární doplňky</h5>
+            </div>
+            <div class="card-body">
+                {if isset($popularAddons) && $popularAddons->count() > 0}
+                    <div class="list-group">
+                        <a n:foreach="$popularAddons as $addon" href="{link Addon:detail, $addon->slug}" 
+                           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            {$addon->name}
+                            <span class="badge bg-primary rounded-pill">{$addon->downloads_count}</span>
+                        </a>
+                    </div>
+                {else}
+                    <p class="text-muted">Nebyly nalezeny žádné populární doplňky.</p>
+                {/if}
+            </div>
+            <div class="card-footer">
+                <a href="{link Addon:}" class="btn btn-sm btn-primary w-100">Zobrazit všechny doplňky</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-star me-1"></i> Nejlépe hodnocené doplňky</h5>
+            </div>
+            <div class="card-body">
+                {if isset($topRatedAddons) && $topRatedAddons->count() > 0}
+                    <div class="list-group">
+                        <a n:foreach="$topRatedAddons as $addon" href="{link Addon:detail, $addon->slug}" 
+                           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            {$addon->name}
+                            <div>
+                                {for $i = 1; $i <= 5; $i++}
+                                    {if $i <= $addon->rating}
+                                        <i class="fas fa-star text-warning"></i>
+                                    {elseif $i <= $addon->rating + 0.5}
+                                        <i class="fas fa-star-half-alt text-warning"></i>
+                                    {else}
+                                        <i class="far fa-star text-warning"></i>
+                                    {/if}
+                                {/for}
+                            </div>
+                        </a>
+                    </div>
+                {else}
+                    <p class="text-muted">Nebyly nalezeny žádné hodnocené doplňky.</p>
+                {/if}
+            </div>
+            <div class="card-footer">
+                <a href="{link Addon, 'sort' => 'rating'}" class="btn btn-sm btn-success w-100">Zobrazit nejlépe hodnocené</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-clock me-1"></i> Nejnovější doplňky</h5>
+            </div>
+            <div class="card-body">
+                {if isset($newestAddons) && $newestAddons->count() > 0}
+                    <div class="list-group">
+                        <a n:foreach="$newestAddons as $addon" href="{link Addon:detail, $addon->slug}" 
+                           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            {$addon->name}
+                            <small class="text-muted">{$addon->created_at|date:'j.n.Y'}</small>
+                        </a>
+                    </div>
+                {else}
+                    <p class="text-muted">Nebyly nalezeny žádné nové doplňky.</p>
+                {/if}
+            </div>
+            <div class="card-footer">
+                <a href="{link Addon, 'sort' => 'created_at'}" class="btn btn-sm btn-info w-100">Zobrazit nejnovější</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-5">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-folder me-1"></i> Procházet podle kategorií</h5>
+            </div>
+            <div class="card-body">
+                {if isset($categories) && $categories->count() > 0}
+                    <div class="row">
+                        <div n:foreach="$categories as $category" class="col-md-4 mb-3">
+                            <a href="{link Category:detail, $category->slug}" class="text-decoration-none">
+                                <div class="d-flex align-items-center p-2 border rounded hover-shadow">
+                                    <i class="fas fa-folder me-2 text-primary"></i>
+                                    <span>{$category->name}</span>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                {else}
+                    <p class="text-muted">Nebyly nalezeny žádné kategorie.</p>
+                {/if}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="fas fa-tags me-1"></i> Populární tagy</h5>
+            </div>
+            <div class="card-body">
+                {if isset($popularTags) && count($popularTags) > 0}
+                    <div class="d-flex flex-wrap gap-2">
+                        <a n:foreach="$popularTags as $tag" href="{link Tag:detail, $tag['slug']}" 
+                           class="btn btn-sm btn-outline-secondary">
+                            {$tag['name']}
+                        </a>
+                    </div>
+                {else}
+                    <p class="text-muted">Nebyly nalezeny žádné tagy.</p>
+                {/if}
+            </div>
+        </div>
+    </div>
+</div>
+{/block}

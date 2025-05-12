@@ -1,0 +1,28 @@
+parameters:
+	uploadsDir: %appDir%/../www/uploads
+
+application:
+	errorPresenter:
+		4xx: Error:Error4xx
+		5xx: Error:Error5xx
+	mapping: App\Presentation\*\**Presenter
+
+
+database:
+	dsn: 'mysql:host=localhost;dbname=eclipse'
+	user: root
+	password:
+	conventions: discovered
+
+
+latte:
+	strictTypes: yes
+	strictParsing: yes
+	extensions:
+		- App\Presentation\Accessory\LatteExtension
+
+
+di:
+	export:
+		parameters: no
+		tags: no

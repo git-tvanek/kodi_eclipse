@@ -1,0 +1,292 @@
+{block title}{$category->name}{/block}
+
+{block content}
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{link Home:}">Domů</a></li>
+        <li class="breadcrumb-item"><a href="{link Category:}">Kategorie</a></li>
+        
+        {if isset($categoryPath) && $categoryPath->count() > 0}
+            {foreach $categoryPath as $pathItem}
+                {if $pathItem->id != $category->id}
+                    <li class="breadcrumb-item">
+                        <a href="{link Category:detail, $pathItem->slug}">{$pathItem->name}</a>
+                    </li>
+                {/if}
+            {/foreach}
+        {/if}
+        
+        <li class="breadcrumb-item active" aria-current="page">{$category->name}</li>
+    </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-start mb-4">
+    <div>
+        <h1><i class="fas fa-folder me-2"></i>{$category->name}</h1>
+        <p class="text-muted">
+            {if isset($addons)}
+                {$addons->getTotalCount()} doplňků v této kategorii
+            {/if}
+        </p>
+    </div>
+    <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="categoryActions" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-cog"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="categoryActions">
+            <li><a class="dropdown-item" href="{link Category:edit, $category->id}"><i class="fas fa-edit me-1"></i> Upravit kategorii</a></li>
+            <li><a class="dropdown-item" href="{link Category:add, 'parent_id' => $category->id}"><i class="fas fa-folder-plus me-1"></i> Přidat podkategorii</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#deleteCategoryModal"><i class="fas fa-trash me-1"></i> Smazat kategorii</a></li>
+        </ul>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- Subcategories -->
+        {if isset($subcategories) && $subcategories->count() > 0}
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Podkategorie</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row row-cols-1 row-cols-md-3 g-3">
+                        {foreach $subcategories as $subcategory}
+                            <div class="col">
+                                <a href="{link Category:detail, $subcategory->slug}" class="text-decoration-none">
+                                    <div class="p-3 border rounded text-center hover-shadow">
+                                        <i class="fas fa-folder fa-2x text-primary mb-2"></i>
+                                        <h6 class="mb-0">{$subcategory->name}</h6>
+                                    </div>
+                                </a>
+                            </div>
+                        {/foreach}
+                    </div>
+                </div>
+            </div>
+        {/if}
+        
+        <!-- Addons -->
+        {if isset($addons) && $addons->getItems()->count() > 0}
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center bg-light">
+                    <h5 class="mb-0">Doplňky v této kategorii</h5>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                            Řazení: {$filters['sort_by'] ?? 'název'} {$filters['sort_dir'] ?? 'ASC'}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'name', 'sort_dir' => 'ASC'}">Název (A-Z)</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'name', 'sort_dir' => 'DESC'}">Název (Z-A)</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'downloads_count', 'sort_dir' => 'DESC'}">Nejvíce stahované</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'rating', 'sort_dir' => 'DESC'}">Nejlépe hodnocené</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'created_at', 'sort_dir' => 'DESC'}">Nejnovější</a></li>
+                            <li><a class="dropdown-item" href="{link this, 'sort_by' => 'created_at', 'sort_dir' => 'ASC'}">Nejstarší</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row row-cols-1 row-cols-md-3 g-4">
+                        {foreach $addons->getItems() as $addon}
+                            <div class="col">
+                                <div class="card h-100 hover-shadow">
+                                    <div class="card-img-top position-relative" style="height: 150px; background-color: #f8f9fa;">
+                                        {if $addon->icon_url}
+                                            <img src="{$basePath}/uploads/{$addon->icon_url}" class="img-fluid p-3" alt="{$addon->name}" style="max-height: 100%;">
+                                        {else}
+                                            <div class="d-flex justify-content-center align-items-center h-100">
+                                                <i class="fas fa-cube fa-3x text-secondary"></i>
+                                            </div>
+                                        {/if}
+                                        <div class="position-absolute top-0 end-0 p-2">
+                                            <span class="badge bg-primary rounded-pill">
+                                                <i class="fas fa-download me-1"></i> {$addon->downloads_count}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card-body">
+                                        <h5 class="card-title">
+                                            <a href="{link Addon:detail, $addon->slug}" class="text-decoration-none">{$addon->name}</a>
+                                        </h5>
+                                        
+                                        <div class="mb-2">
+                                            {for $i = 1; $i <= 5; $i++}
+                                                {if $i <= $addon->rating}
+                                                    <i class="fas fa-star text-warning"></i>
+                                                {elseif $i <= $addon->rating + 0.5}
+                                                    <i class="fas fa-star-half-alt text-warning"></i>
+                                                {else}
+                                                    <i class="far fa-star text-warning"></i>
+                                                {/if}
+                                            {/for}
+                                            <small class="text-muted ms-1">({$addon->rating})</small>
+                                        </div>
+                                        
+                                        <p class="card-text small text-muted">
+                                            {if $addon->description}
+                                                {$addon->description|truncate:100}
+                                            {else}
+                                                Žádný popis není k dispozici.
+                                            {/if}
+                                        </p>
+                                    </div>
+                                    
+                                    <div class="card-footer bg-white">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="text-muted">Verze: {$addon->version}</small>
+                                            <a href="{link Addon:download, $addon->slug}" class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-download me-1"></i> Stáhnout
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {/foreach}
+                    </div>
+                    
+                    <!-- Pagination -->
+                    {if $addons->getPages() > 1}
+                        <nav class="mt-4">
+                            <ul class="pagination justify-content-center">
+                                <li class="page-item {if !$addons->hasPreviousPage()}disabled{/if}">
+                                    <a class="page-link" href="{link this, 'page' => $addons->getPreviousPage()}">&laquo; Předchozí</a>
+                                </li>
+                                
+                                {for $i = 1; $i <= $addons->getPages(); $i++}
+                                    <li class="page-item {if $i == $page}active{/if}">
+                                        <a class="page-link" href="{link this, 'page' => $i}">{$i}</a>
+                                    </li>
+                                {/for}
+                                
+                                <li class="page-item {if !$addons->hasNextPage()}disabled{/if}">
+                                    <a class="page-link" href="{link this, 'page' => $addons->getNextPage()}">Další &raquo;</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    {/if}
+                </div>
+            </div>
+        {else}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-1"></i> Tato kategorie zatím neobsahuje žádné doplňky. <a href="{link Addon:add}" class="alert-link">Přidejte nový doplněk</a>.
+            </div>
+        {/if}
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Tag Cloud -->
+        {if isset($tagCloud) && count($tagCloud) > 0}
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Populární tagy v této kategorii</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex flex-wrap gap-2">
+                        {foreach $tagCloud as $tag}
+                            <a href="{link Tag:detail, $tag['slug']}" 
+                               class="btn btn-sm btn-outline-secondary" 
+                               style="font-size: {$tag['normalized_weight'] * 0.5 + 0.7}rem">
+                                {$tag['name']}
+                            </a>
+                        {/foreach}
+                    </div>
+                </div>
+            </div>
+        {/if}
+        
+        <!-- Related Categories -->
+        {if $category->parent_id || isset($subcategories) && $subcategories->count() > 0}
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Související kategorie</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        {if $category->parent_id}
+                            {foreach $categoryPath as $pathItem}
+                                {if $pathItem->id == $category->parent_id}
+                                    <li class="list-group-item">
+                                        <i class="fas fa-level-up-alt fa-rotate-90 me-2"></i>
+                                        <a href="{link Category:detail, $pathItem->slug}">{$pathItem->name}</a>
+                                        <span class="text-muted">(nadřazená)</span>
+                                    </li>
+                                {/if}
+                            {/foreach}
+                        {/if}
+                        
+                        {if isset($subcategories) && $subcategories->count() > 0}
+                            {foreach $subcategories as $subcategory}
+                                <li class="list-group-item">
+                                    <i class="fas fa-level-down-alt fa-rotate-90 me-2"></i>
+                                    <a href="{link Category:detail, $subcategory->slug}">{$subcategory->name}</a>
+                                    <span class="text-muted">(podkategorie)</span>
+                                </li>
+                            {/foreach}
+                        {/if}
+                    </ul>
+                </div>
+            </div>
+        {/if}
+        
+        <!-- Category Info -->
+        <div class="card mb-4">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Informace o kategorii</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        Počet doplňků
+                        <span class="badge bg-primary rounded-pill">{$addons->getTotalCount()}</span>
+                    </li>
+                    
+                    {if isset($subcategories) && $subcategories->count() > 0}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Počet podkategorií
+                            <span class="badge bg-secondary rounded-pill">{$subcategories->count()}</span>
+                        </li>
+                    {/if}
+                </ul>
+                
+                <div class="mt-3">
+                    <a href="{link Addon:add, 'category_id' => $category->id}" class="btn btn-sm btn-primary w-100">
+                        <i class="fas fa-plus me-1"></i> Přidat doplněk do této kategorie
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteCategoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Potvrdit smazání</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Opravdu chcete smazat kategorii <strong>{$category->name}</strong>? Tato akce je nevratná.</p>
+                {if isset($subcategories) && $subcategories->count() > 0}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-1"></i> Tato kategorie má {$subcategories->count()} podkategorií, které budou také smazány.
+                    </div>
+                {/if}
+                {if isset($addons) && $addons->getTotalCount() > 0}
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-1"></i> Tato kategorie obsahuje {$addons->getTotalCount()} doplňků, které budou odstraněny nebo přesunuty.
+                    </div>
+                {/if}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zrušit</button>
+                <a href="{link Category:delete, $category->id}" class="btn btn-danger">Smazat kategorii</a>
+            </div>
+        </div>
+    </div>
+</div>
+{/block}
