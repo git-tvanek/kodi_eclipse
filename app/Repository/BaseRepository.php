@@ -214,4 +214,59 @@ abstract class BaseRepository implements IBaseRepository
     {
         return new Collection($entities);
     }
+
+    /**
+     * Kontroluje, zda entita s daným ID existuje
+     * 
+     * @param int $id
+     * @return bool
+     */
+    public function exists(int $id): bool
+    {
+        return $this->getTable()->wherePrimary($id)->count() > 0;
+    }
+    
+    /**
+     * Začíná transakci
+     */
+    public function beginTransaction(): void
+    {
+        $this->database->beginTransaction();
+    }
+    
+    /**
+     * Potvrzuje transakci
+     */
+    public function commit(): void
+    {
+        $this->database->commit();
+    }
+    
+    /**
+     * Vrací transakci
+     */
+    public function rollback(): void
+    {
+        $this->database->rollBack();
+    }
+    
+    /**
+     * Provede transakční operaci s callback funkcí
+     * 
+     * @param callable $callback
+     * @return mixed
+     * @throws \Exception
+     */
+    public function transaction(callable $callback)
+    {
+        try {
+            $this->beginTransaction();
+            $result = $callback();
+            $this->commit();
+            return $result;
+        } catch (\Exception $e) {
+            $this->rollback();
+            throw $e;
+        }
+    }
 }

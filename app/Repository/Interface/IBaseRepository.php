@@ -81,4 +81,36 @@ interface IBaseRepository
      * @return PaginatedCollection<T>
      */
     public function findWithPagination(array $criteria = [], int $page = 1, int $itemsPerPage = 10, string $orderColumn = 'id', string $orderDir = 'ASC'): PaginatedCollection;
+
+    /**
+     * Kontroluje, zda entita s daným ID existuje
+     * 
+     * @param int $id
+     * @return bool
+     */
+    public function exists(int $id): bool;
+    
+    /**
+     * Začíná transakci
+     */
+    public function beginTransaction(): void;
+    
+    /**
+     * Potvrzuje transakci
+     */
+    public function commit(): void;
+    
+    /**
+     * Vrací transakci
+     */
+    public function rollback(): void;
+    
+    /**
+     * Provede transakční operaci s callback funkcí
+     * 
+     * @param callable $callback
+     * @return mixed
+     * @throws \Exception
+     */
+    public function transaction(callable $callback);
 }

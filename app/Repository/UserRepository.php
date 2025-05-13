@@ -11,6 +11,7 @@ use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IUserRepository;
 use Nette\Database\Explorer;
 use Nette\Database\Table\Selection;
+use Nette\Security\Passwords;
 
 /**
  * @extends BaseRepository<User>
@@ -23,6 +24,7 @@ class UserRepository extends BaseRepository implements IUserRepository
         parent::__construct($database);
         $this->tableName = 'users';
         $this->entityClass = User::class;
+        $this->passwords = new Passwords();
     }
 
     /**
@@ -302,5 +304,315 @@ class UserRepository extends BaseRepository implements IUserRepository
             ]);
         
         return $result > 0;
+    }
+
+     /**
+     * Vytvoří nového uživatele
+     * 
+     * @param User $user
+     * @return int
+     */
+    public function create(User $user): int
+    {
+        if (empty($user->created_at)) {
+            $user->created_at = new \DateTime();
+        }
+        
+        if (empty($user->updated_at)) {
+            $user->updated_at = new \DateTime();
+        }
+        
+        return $this->save($user);
+    }
+    
+    /**
+     * Aktualizuje uživatele
+     * 
+     * @param User $user
+     * @return int
+     */
+    public function update(User $user): int
+    {
+        $user->updated_at = new \DateTime();
+        return $this->save($user);
+    }
+    
+    /**
+     * Aktualizuje uživatelský profil
+     * 
+     * @param int $userId
+     * @param array $profileData
+     * @return bool
+     */
+    public function updateProfile(int $userId, array $profileData): bool
+    {
+        $user = $this->findById($userId);
+        
+        if (!$user) {
+            return false;
+        }
+        
+        // Filtrování dat - jen povolené položky profilu
+        $allowedFields = ['username', 'email', 'profile_image'];
+        $filteredData = array_intersect_key($profileData, array_flip($allowedFields));
+        
+        if (empty($filteredData)) {
+            return false;
+        }
+        
+        $filteredData['updated_at'] = new \DateTime();
+        
+        return $this->getTable()->wherePrimary($userId)->update($filteredData) > 0;
+    }
+    
+    /**
+     * Změní heslo uživatele
+     * 
+     * @param int $userId
+     * @param string $newPassword
+     * @return bool
+     */
+    public function changePassword(int $userId, string $newPassword): bool
+    {
+        return $this->getTable()->wherePrimary($userId)->update([
+            'password_hash' => $this->passwords->hash($newPassword),
+            'updated_at' => new \DateTime()
+        ]) > 0;
+    }
+    
+    /**
+     * Verifikuje emailovou adresu
+     * 
+     * @param string $token
+     * @return bool
+     */
+    public function verifyEmail(string $token): bool
+    {
+        $user = $this->findByVerificationToken($token);
+        
+        if (!$user) {
+            return false;
+        }
+        
+        return $this->getTable()->wherePrimary($user->id)->update([
+            'is_verified' => true,
+            'verification_token' => null,
+            'updated_at' => new \DateTime()
+        ]) > 0;
+    }
+    
+    /**
+     * Vytvoří a uloží token pro reset hesla
+     * 
+     * @param int $userId
+     * @param string $token
+     * @param \DateTime $expires
+     * @return bool
+     */
+    public function createPasswordResetToken(int $userId, string $token, \DateTime $expires): bool
+    {
+        return $this->getTable()->wherePrimary($userId)->update([
+            'password_reset_token' => $token,
+            'password_reset_expires' => $expires,
+            'updated_at' => new \DateTime()
+        ]) > 0;
+    }
+    
+    /**
+     * Resetuje heslo pomocí tokenu
+     * 
+     * @param string $token
+     * @param string $newPassword
+     * @return bool
+     */
+    public function resetPassword(string $token, string $newPassword): bool
+    {
+        $user = $this->findByPasswordResetToken($token);
+        
+        if (!$user) {
+            return false;
+        }
+        
+        return $this->getTable()->wherePrimary($user->id)->update([
+            'password_hash' => $this->passwords->hash($newPassword),
+            'password_reset_token' => null,
+            'password_reset_expires' => null,
+            'updated_at' => new \DateTime()
+        ]) > 0;
+    }
+    
+    /**
+     * Aktivuje nebo deaktivuje uživatelský účet
+     * 
+     * @param int $userId
+     * @param bool $active
+     * @return bool
+     */
+    public function setActive(int $userId, bool $active): bool
+    {
+        return $this->getTable()->wherePrimary($userId)->update([
+            'is_active' => $active,
+            'updated_at' => new \DateTime()
+        ]) > 0;
+    }
+    
+    /**
+     * Najde uživatele podle identifikátoru (username nebo email)
+     * 
+     * @param string $identifier
+     * @return User|null
+     */
+    public function findByIdentifier(string $identifier): ?User
+    {
+        // Zkusíme najít podle username
+        $user = $this->findByUsername($identifier);
+        
+        // Pokud není nalezen, zkusíme podle email
+        if (!$user) {
+            $user = $this->findByEmail($identifier);
+        }
+        
+        return $user;
+    }
+    
+    /**
+     * Vrátí všechny uživatele s danou rolí
+     * 
+     * @param string $roleCode
+     * @return Collection<User>
+     */
+    public function findByRole(string $roleCode): Collection
+    {
+        $role = $this->database->table('roles')
+            ->where('code', $roleCode)
+            ->fetch();
+            
+        if (!$role) {
+            return new Collection();
+        }
+        
+        $userRows = $this->database->table($this->tableName)
+            ->select($this->tableName.'.*')
+            ->joinWhere('user_roles', 'user_roles.user_id = '.$this->tableName.'.id')
+            ->where('user_roles.role_id', $role->id);
+            
+        $users = [];
+        foreach ($userRows as $row) {
+            $users[] = User::fromArray($row->toArray());
+        }
+        
+        return new Collection($users);
+    }
+    
+    /**
+     * Vyhledá uživatele podle komplexních kritérií
+     * 
+     * @param array $criteria
+     * @param string $sortBy
+     * @param string $sortDir
+     * @param int $page
+     * @param int $itemsPerPage
+     * @return PaginatedCollection<User>
+     */
+    public function search(
+        array $criteria, 
+        string $sortBy = 'username', 
+        string $sortDir = 'ASC', 
+        int $page = 1, 
+        int $itemsPerPage = 10
+    ): PaginatedCollection {
+        $selection = $this->getTable();
+        
+        // Přidáme jednotlivá kritéria
+        foreach ($criteria as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            
+            switch ($key) {
+                case 'username':
+                case 'email':
+                    $selection->where("$key LIKE ?", "%{$value}%");
+                    break;
+                    
+                case 'role':
+                    $roleId = $this->database->table('roles')
+                        ->where('code', $value)
+                        ->select('id')
+                        ->fetchField();
+                        
+                    if ($roleId) {
+                        $userIds = $this->database->table('user_roles')
+                            ->where('role_id', $roleId)
+                            ->select('user_id');
+                            
+                        $selection->where('id IN ?', $userIds);
+                    }
+                    break;
+                    
+                case 'is_active':
+                case 'is_verified':
+                    $selection->where($key, (bool) $value);
+                    break;
+                    
+                case 'created_after':
+                    if ($value instanceof \DateTime) {
+                        $selection->where('created_at >= ?', $value->format('Y-m-d H:i:s'));
+                    }
+                    break;
+                    
+                case 'created_before':
+                    if ($value instanceof \DateTime) {
+                        $selection->where('created_at <= ?', $value->format('Y-m-d H:i:s'));
+                    }
+                    break;
+                    
+                case 'last_login_after':
+                    if ($value instanceof \DateTime) {
+                        $selection->where('last_login >= ?', $value->format('Y-m-d H:i:s'));
+                    }
+                    break;
+                    
+                case 'last_login_before':
+                    if ($value instanceof \DateTime) {
+                        $selection->where('last_login <= ?', $value->format('Y-m-d H:i:s'));
+                    }
+                    break;
+                    
+                default:
+                    if (property_exists('App\Model\User', $key)) {
+                        $selection->where($key, $value);
+                    }
+                    break;
+            }
+        }
+        
+        // Počet celkových výsledků
+        $count = $selection->count();
+        $pages = (int) ceil($count / $itemsPerPage);
+        
+        // Řazení
+        if (property_exists('App\Model\User', $sortBy)) {
+            $selection->order("$sortBy $sortDir");
+        } else {
+            $selection->order('username ASC');
+        }
+        
+        // Stránkování
+        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
+        
+        // Konverze na entity
+        $users = [];
+        foreach ($selection as $row) {
+            $users[] = User::fromArray($row->toArray());
+        }
+        
+        return new PaginatedCollection(
+            new Collection($users),
+            $count,
+            $page,
+            $itemsPerPage,
+            $pages
+        );
     }
 }
