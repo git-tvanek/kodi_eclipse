@@ -68,4 +68,122 @@ interface IRoleRepository extends IBaseRepository
      * @return Collection<Role>
      */
     public function findRolesByUser(int $userId): Collection;
+
+     /**
+     * Zjistí, zda role existuje podle kódu
+     * 
+     * @param string $code
+     * @return bool
+     */
+    public function existsByCode(string $code): bool;
+    
+    /**
+     * Vytvoří novou roli
+     * 
+     * @param Role $role
+     * @return int
+     */
+    public function create(Role $role): int;
+    
+    /**
+     * Aktualizuje existující roli
+     * 
+     * @param Role $role
+     * @return int
+     */
+    public function update(Role $role): int;
+    
+    /**
+     * Najde role podle priority
+     * 
+     * @param int $priority
+     * @param string $operator
+     * @return Collection<Role>
+     */
+    public function findByPriority(int $priority, string $operator = '='): Collection;
+    
+    /**
+     * Najde role s vyšší nebo stejnou prioritou
+     * 
+     * @param int $priority
+     * @return Collection<Role>
+     */
+    public function findByPriorityHigherOrEqual(int $priority): Collection;
+    
+    /**
+     * Najde role s nižší prioritou
+     * 
+     * @param int $priority
+     * @return Collection<Role>
+     */
+    public function findByPriorityLower(int $priority): Collection;
+    
+    /**
+     * Vrátí všechna oprávnění pro roli
+     * 
+     * @param int $roleId
+     * @return Collection<Permission>
+     */
+    public function getRolePermissions(int $roleId): Collection;
+    
+    /**
+     * Zjistí, zda role má konkrétní oprávnění
+     * 
+     * @param int $roleId
+     * @param int $permissionId
+     * @return bool
+     */
+    public function hasPermission(int $roleId, int $permissionId): bool;
+    
+    /**
+     * Zjistí, zda role má všechna oprávnění z daného seznamu
+     * 
+     * @param int $roleId
+     * @param array $permissionIds
+     * @return bool
+     */
+    public function hasAllPermissions(int $roleId, array $permissionIds): bool;
+    
+    /**
+     * Zjistí, zda role má alespoň jedno oprávnění z daného seznamu
+     * 
+     * @param int $roleId
+     * @param array $permissionIds
+     * @return bool
+     */
+    public function hasAnyPermission(int $roleId, array $permissionIds): bool;
+    
+    /**
+     * Vrátí počet uživatelů s danou rolí
+     * 
+     * @param int $roleId
+     * @return int
+     */
+    public function countUsers(int $roleId): int;
+    
+    /**
+     * Odstraní roli a všechny její oprávnění
+     * 
+     * @param int $roleId
+     * @return bool
+     */
+    public function deleteWithPermissions(int $roleId): bool;
+    
+    /**
+     * Najde role podle filtru s paginací
+     * 
+     * @param array $criteria
+     * @param string $sortBy
+     * @param string $sortDir
+     * @param int $page
+     * @param int $itemsPerPage
+     * @return PaginatedCollection<Role>
+     */
+    public function search(
+        array $criteria, 
+        string $sortBy = 'name', 
+        string $sortDir = 'ASC', 
+        int $page = 1, 
+        int $itemsPerPage = 10
+    ): PaginatedCollection;
 }

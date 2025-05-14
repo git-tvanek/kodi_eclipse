@@ -91,4 +91,108 @@ interface IUserRepository extends IBaseRepository
      * @return array
      */
     public function getUserStatistics(): array;
+
+    /**
+     * Vytvoří nového uživatele
+     * 
+     * @param User $user
+     * @return int
+     */
+    public function create(User $user): int;
+    
+    /**
+     * Aktualizuje uživatele
+     * 
+     * @param User $user
+     * @return int
+     */
+    public function update(User $user): int;
+    
+    /**
+     * Aktualizuje uživatelský profil
+     * 
+     * @param int $userId
+     * @param array $profileData
+     * @return bool
+     */
+    public function updateProfile(int $userId, array $profileData): bool;
+    
+    /**
+     * Změní heslo uživatele
+     * 
+     * @param int $userId
+     * @param string $newPassword
+     * @return bool
+     */
+    public function changePassword(int $userId, string $newPassword): bool;
+    
+    /**
+     * Verifikuje emailovou adresu
+     * 
+     * @param string $token
+     * @return bool
+     */
+    public function verifyEmail(string $token): bool;
+    
+    /**
+     * Vytvoří a uloží token pro reset hesla
+     * 
+     * @param int $userId
+     * @param string $token
+     * @param \DateTime $expires
+     * @return bool
+     */
+    public function createPasswordResetToken(int $userId, string $token, \DateTime $expires): bool;
+    
+    /**
+     * Resetuje heslo pomocí tokenu
+     * 
+     * @param string $token
+     * @param string $newPassword
+     * @return bool
+     */
+    public function resetPassword(string $token, string $newPassword): bool;
+    
+    /**
+     * Aktivuje nebo deaktivuje uživatelský účet
+     * 
+     * @param int $userId
+     * @param bool $active
+     * @return bool
+     */
+    public function setActive(int $userId, bool $active): bool;
+    
+    /**
+     * Najde uživatele podle identifikátoru (username nebo email)
+     * 
+     * @param string $identifier
+     * @return User|null
+     */
+    public function findByIdentifier(string $identifier): ?User;
+    
+    /**
+     * Vrátí všechny uživatele s danou rolí
+     * 
+     * @param string $roleCode
+     * @return Collection<User>
+     */
+    public function findByRole(string $roleCode): Collection;
+    
+    /**
+     * Vyhledá uživatele podle komplexních kritérií
+     * 
+     * @param array $criteria
+     * @param string $sortBy
+     * @param string $sortDir
+     * @param int $page
+     * @param int $itemsPerPage
+     * @return PaginatedCollection<User>
+     */
+    public function search(
+        array $criteria, 
+        string $sortBy = 'username', 
+        string $sortDir = 'ASC', 
+        int $page = 1, 
+        int $itemsPerPage = 10
+    ): PaginatedCollection;
 }
