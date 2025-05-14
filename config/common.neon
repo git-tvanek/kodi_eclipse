@@ -26,3 +26,6 @@ di:
 	export:
 		parameters: no
 		tags: no
+
+includes:
+	- config/doctrine.neon

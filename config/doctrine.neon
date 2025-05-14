@@ -1,0 +1,48 @@
+extensions:
+    # Základní DBAL (Databázová abstrakční vrstva)
+    dbal: Nettrine\DBAL\DI\DbalExtension
+    
+    # Nadstavba nad DBAL
+    dbal.console: Nettrine\DBAL\DI\DbalConsoleExtension
+    
+    # Doctrine ORM
+    orm: Nettrine\ORM\DI\OrmExtension
+    orm.console: Nettrine\ORM\DI\OrmConsoleExtension
+    orm.annotations: Nettrine\ORM\DI\OrmAnnotationsExtension
+    orm.cache: Nettrine\ORM\DI\OrmCacheExtension
+    
+    # Rozšíření pro Doctrine
+    orm.extensions.atlantic18: Nettrine\Extensions\Atlantic18\DI\Atlantic18BehaviorExtension
+
+dbal:
+    # Konfigurace připojení k databázi
+    connection:
+        driver: pdo_mysql
+        host: localhost
+        dbname: eclipse
+        user: root
+        password: 
+        charset: utf8mb4
+        logging: %debugMode%
+        
+orm:
+    # Konfigurace entity manageru
+    entityManagerDecoratorClass: App\Doctrine\EntityManagerDecorator
+    
+    # Konfigurace cesty k entitám
+    entityManagerClassName: EntityManager
+    configuration:
+        proxyDir: %tempDir%/cache/doctrine/proxies
+        autoGenerateProxyClasses: true
+        metadataDriverImpl: annotations
+        
+orm.annotations:
+    # Konfigurace cest k entitám pro anotace
+    paths:
+        - %appDir%/Entity
+
+orm.cache:
+    # Konfigurace cache
+    defaultDriver: filesystem
+    filesystem:
+        dir: %tempDir%/cache/doctrine
