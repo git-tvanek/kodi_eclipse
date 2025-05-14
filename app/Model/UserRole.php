@@ -36,4 +36,31 @@ class UserRole
             'role_id' => $this->role_id,
         ];
     }
+    
+    /**
+     * Vytvoří novou instanci UserRole pro přidání role uživateli
+     * 
+     * @param int $userId
+     * @param int $roleId
+     * @return self
+     */
+    public static function create(int $userId, int $roleId): self
+    {
+        $userRole = new self();
+        $userRole->user_id = $userId;
+        $userRole->role_id = $roleId;
+        return $userRole;
+    }
+    
+    /**
+     * Zkontroluje, zda záznam spojuje daného uživatele a roli
+     * 
+     * @param int $userId
+     * @param int $roleId
+     * @return bool
+     */
+    public function matches(int $userId, int $roleId): bool
+    {
+        return $this->user_id === $userId && $this->role_id === $roleId;
+    }
 }

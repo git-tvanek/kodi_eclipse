@@ -36,4 +36,41 @@ class RolePermission
             'permission_id' => $this->permission_id,
         ];
     }
+    
+    /**
+     * Vytvoří novou instanci RolePermission pro přidání oprávnění roli
+     * 
+     * @param int $roleId
+     * @param int $permissionId
+     * @return self
+     */
+    public static function create(int $roleId, int $permissionId): self
+    {
+        $rolePermission = new self();
+        $rolePermission->role_id = $roleId;
+        $rolePermission->permission_id = $permissionId;
+        return $rolePermission;
+    }
+    
+    /**
+     * Zkontroluje, zda záznam spojuje danou roli a oprávnění
+     * 
+     * @param int $roleId
+     * @param int $permissionId
+     * @return bool
+     */
+    public function matches(int $roleId, int $permissionId): bool
+    {
+        return $this->role_id === $roleId && $this->permission_id === $permissionId;
+    }
+    
+    /**
+     * Získá identifikátor záznamu pro cache a debug účely
+     * 
+     * @return string
+     */
+    public function getIdentifier(): string
+    {
+        return "role:{$this->role_id}:permission:{$this->permission_id}";
+    }
 }

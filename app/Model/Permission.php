@@ -48,4 +48,14 @@ class Permission
             'description' => $this->description,
         ];
     }
+    
+    /**
+     * Získá identifikátor práva pro Nette Permission ve formátu "resource:action"
+     * 
+     * @return string
+     */
+    public function getNettePermissionId(): string
+    {
+        return "{$this->resource}:{$this->action}";
+    }
 }

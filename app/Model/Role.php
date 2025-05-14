@@ -48,4 +48,14 @@ class Role
             'priority' => $this->priority,
         ];
     }
+    
+    /**
+     * Vrací kód role pro použití v Nette Permission
+     * 
+     * @return string
+     */
+    public function getNetteRoleId(): string
+    {
+        return $this->code;
+    }
 }

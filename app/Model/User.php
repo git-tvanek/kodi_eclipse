@@ -7,8 +7,9 @@ namespace App\Model;
 use DateTime;
 use Nette\SmartObject;
 use Nette\Security\Passwords;
+use Nette\Security\IIdentity;
 
-class User
+class User implements IIdentity
 {
     use SmartObject;
 
@@ -25,6 +26,26 @@ class User
     public DateTime $created_at;
     public DateTime $updated_at;
     public ?DateTime $last_login = null;
+
+    /**
+     * Implementace IIdentity - vrací ID uživatele
+     * @return int
+     */
+    public function getId(): int
+    {
+        return $this->id;
+    }
+    
+    /**
+     * Implementace IIdentity - vrací role uživatele
+     * @return array
+     */
+    public function getRoles(): array
+    {
+        // Tato metoda bude v reálném použití potřebovat získat role z databáze
+        // Pro zatím vracíme prázdné pole, později to doplníme
+        return [];
+    }
 
     /**
      * Create a User instance from array data
@@ -114,5 +135,21 @@ class User
     public static function hashPassword(string $password): string
     {
         return (new Passwords())->hash($password);
+    }
+    
+    /**
+     * Pro získání dat kompatibilních s Nette\Security\SimpleIdentity
+     * 
+     * @return array
+     */
+    public function getIdentityData(): array
+    {
+        return [
+            'username' => $this->username,
+            'email' => $this->email,
+            'is_active' => $this->is_active,
+            'is_verified' => $this->is_verified,
+            'profile_image' => $this->profile_image,
+        ];
     }
 }
