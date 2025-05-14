@@ -1,0 +1,50 @@
+{
+  "name": "nettrine/extensions-atlantic18",
+  "description": "Doctrine2 behavioral extensions for Nette Framework",
+  "keywords": ["nette", "doctrine", "orm", "database"],
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/nettrine/extensions-atlantic18",
+  "authors": [
+    {
+      "name": "Milan Felix Šulc",
+      "homepage": "https://f3l1x.io"
+    }
+  ],
+  "require": {
+    "php": ">=7.2",
+    "nette/di": "^3.0.0",
+    "doctrine/orm": "^2.8.0",
+    "doctrine/annotations": "^1.6.0",
+    "gedmo/doctrine-extensions": "^3.0.3"
+  },
+  "require-dev": {
+    "nettrine/orm": "^0.8.0",
+    "ninjify/qa": "^0.12",
+    "ninjify/nunjuck": "^0.4",
+    "phpstan/phpstan": "^0.12",
+    "phpstan/phpstan-deprecation-rules": "^0.12",
+    "phpstan/phpstan-nette": "^0.12",
+    "phpstan/phpstan-strict-rules": "^0.12"
+  },
+  "autoload": {
+    "psr-4": {
+      "Nettrine\\Extensions\\Atlantic18\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\Cases\\": "tests"
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "config": {
+    "sort-packages": true
+  },
+  "extra": {
+    "branch-alias": {
+      "dev-master": "0.7.x-dev"
+    }
+  }
+}
