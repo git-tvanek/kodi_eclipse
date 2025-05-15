@@ -14,6 +14,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 
 /**
+ * Repozitář pro práci s recenzemi doplňků
+ * 
  * @extends BaseDoctrineRepository<AddonReview>
  */
 class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRepository
@@ -28,6 +30,13 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         return new Collection($entities);
     }
     
+    // -------------------------------------------------------------------------
+    // ZÁKLADNÍ CRUD OPERACE
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Vytvoří novou recenzi doplňku
+     */
     public function create(AddonReview $review): int
     {
         // Set timestamp if not already set
@@ -44,6 +53,9 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         return $review->getId();
     }
     
+    /**
+     * Smaže recenzi doplňku
+     */
     public function delete(int $id): int
     {
         $review = $this->find($id);
@@ -63,6 +75,9 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         return 1;
     }
     
+    /**
+     * Aktualizuje průměrné hodnocení doplňku na základě recenzí
+     */
     private function updateAddonRating(Addon $addon): void
     {
         $qb = $this->entityManager->createQueryBuilder();
@@ -77,6 +92,13 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         $this->entityManager->flush();
     }
     
+    // -------------------------------------------------------------------------
+    // METODY PRO VYHLEDÁVÁNÍ RECENZÍ
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Najde recenze pro konkrétní doplněk
+     */
     public function findByAddon(int $addonId): Collection
     {
         $addon = $this->entityManager->getReference(Addon::class, $addonId);
@@ -85,6 +107,9 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         return new Collection($reviews);
     }
     
+    /**
+     * Vyhledá recenze podle zadaných filtrů
+     */
     public function findWithFilters(array $filters = [], string $sortBy = 'created_at', string $sortDir = 'DESC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
         $qb = $this->createQueryBuilder('r');
@@ -170,6 +195,26 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         return $this->paginate($qb, $page, $itemsPerPage);
     }
     
+    /**
+     * Vrátí recenze s konkrétním hodnocením
+     */
+    public function getReviewsByRating(int $rating, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    {
+        $qb = $this->createQueryBuilder('r')
+            ->where('r.rating = :rating')
+            ->setParameter('rating', $rating)
+            ->orderBy('r.created_at', 'DESC');
+        
+        return $this->paginate($qb, $page, $itemsPerPage);
+    }
+    
+    // -------------------------------------------------------------------------
+    // METODY PRO ANALÝZU RECENZÍ
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Poskytuje analýzu sentimentu recenzí pro doplněk
+     */
     public function getSentimentAnalysis(int $addonId): array
     {
         $addon = $this->entityManager->getReference(Addon::class, $addonId);
@@ -209,6 +254,9 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         ];
     }
     
+    /**
+     * Poskytuje časovou řadu aktivity recenzí v určitém intervalu
+     */
     public function getReviewActivityOverTime(int $addonId, string $interval = 'month', int $limit = 12): array
     {
         $addon = $this->entityManager->getReference(Addon::class, $addonId);
@@ -280,6 +328,9 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         return array_values($periods);
     }
     
+    /**
+     * Vrátí nejnovější recenze napříč všemi doplňky
+     */
     public function getMostRecentReviews(int $limit = 10): array
     {
         $qb = $this->createQueryBuilder('r')
@@ -303,16 +354,9 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         return $result;
     }
     
-    public function getReviewsByRating(int $rating, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
-    {
-        $qb = $this->createQueryBuilder('r')
-            ->where('r.rating = :rating')
-            ->setParameter('rating', $rating)
-            ->orderBy('r.created_at', 'DESC');
-        
-        return $this->paginate($qb, $page, $itemsPerPage);
-    }
-    
+    /**
+     * Najde nejčastěji se opakující klíčová slova v komentářích
+     */
     public function findCommonKeywords(int $addonId, int $limit = 10): array
     {
         $addon = $this->entityManager->getReference(Addon::class, $addonId);
@@ -359,38 +403,3 @@ class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRep
         return array_slice($wordFrequencies, 0, $limit, true);
     }
 }
-        
-        foreach ($categories as $category) {
-            $categoriesById[$category->getId()] = $category;
-            $hierarchy[$category->getId()] = [
-                'category' => $category,
-                'children' => [],
-                'addon_count' => 0,
-                'total_downloads' => 0
-            ];
-        }
-        
-        // Build hierarchy
-        foreach ($categories as $category) {
-            if ($category->getParent()) {
-                $parentId = $category->getParent()->getId();
-                
-                if (isset($categoriesById[$parentId])) {
-                    $hierarchy[$parentId]['children'][] = &$hierarchy[$category->getId()];
-                    
-                    // Update stats
-                    $hierarchy[$parentId]['addon_count'] += count($category->getAddons());
-                    $hierarchy[$parentId]['total_downloads'] += array_sum(array_map(function($addon) {
-                        return $addon->getDownloadsCount();
-                    }, $category->getAddons()->toArray()));
-                } else {
-                    unset($hierarchy[$category->getId()]);
-                }
-            } else {
-                // Update stats for root categories
-                $hierarchy[$category->getId()]['addon_count'] += count($category->getAddons());
-                $hierarchy[$category->getId()]['total_downloads'] += array_sum(array_map(function($addon) {
-                    return $addon->getDownloadsCount();
-                }, $category->getAddons()->toArray()));
-            }
-        }

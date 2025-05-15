@@ -4,68 +4,68 @@ declare(strict_types=1);
 
 namespace App\Repository\Interface;
 
-use App\Model\Author;
+use App\Entity\Author;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 
 /**
  * Rozhraní pro repozitář autorů
  * 
- * @extends BaseRepositoryInterface<Author>
+ * @extends IBaseRepository<Author>
  */
 interface IAuthorRepository extends IBaseRepository
 {
     /**
      * Vytvoří nového autora
      * 
-     * @param Author $author
-     * @return int
+     * @param Author $author Entita autora k vytvoření
+     * @return int ID vytvořeného autora
      */
     public function create(Author $author): int;
     
     /**
-     * Najde autora s jeho doplňky
+     * Vrátí autora s jeho doplňky
      * 
-     * @param int $id
-     * @return array|null
+     * @param int $id ID autora
+     * @return array|null Pole obsahující autora a jeho doplňky, nebo null pokud autor neexistuje
      */
     public function getWithAddons(int $id): ?array;
     
     /**
-     * Najde autory s pokročilým filtrováním
+     * Vyhledá autory podle zadaných filtrů
      * 
-     * @param array $filters Kritéria filtrování
+     * @param array $filters Pole filtrů pro vyhledávání
      * @param string $sortBy Pole pro řazení
      * @param string $sortDir Směr řazení (ASC nebo DESC)
      * @param int $page Číslo stránky
      * @param int $itemsPerPage Počet položek na stránku
-     * @return PaginatedCollection<Author>
+     * @return PaginatedCollection<Author> Stránkovaná kolekce autorů
      */
     public function findWithFilters(array $filters = [], string $sortBy = 'name', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection;
     
     /**
-     * Získá statistiky aktivity autora
+     * Získá statistiky autora a jeho doplňků
      * 
-     * @param int $authorId
-     * @return array
+     * @param int $authorId ID autora
+     * @return array Statistiky autora nebo prázdné pole, pokud autor neexistuje
      */
     public function getAuthorStatistics(int $authorId): array;
     
     /**
-     * Získá síť spolupráce autora
+     * Vrátí autory seřazené podle zvoleného kritéria
      * 
-     * @param int $authorId
-     * @param int $depth Maximální hloubka vztahů k prozkoumání
-     * @return array
-     */
-    public function getCollaborationNetwork(int $authorId, int $depth = 2): array;
-    
-    /**
-     * Získá nejlepší autory podle různých metrik
-     * 
-     * @param string $metric 'addons', 'downloads', nebo 'rating'
-     * @param int $limit Maximální počet autorů k vrácení
-     * @return array
+     * @param string $metric Kritérium ('addons', 'downloads', 'rating')
+     * @param int $limit Maximální počet autorů
+     * @return array Pole s nejlepšími autory podle zvoleného kritéria
      */
     public function getTopAuthors(string $metric = 'addons', int $limit = 10): array;
+    
+    /**
+     * Vytvoří síť autorů spolupracujících prostřednictvím podobných tagů
+     * 
+     * @param int $authorId ID autora
+     * @param int $depth Hloubka prohledávání sítě
+     * @return array Struktura sítě spolupracujících autorů
+     */
+    public function getCollaborationNetwork(int $authorId, int $depth = 2): array;
 }

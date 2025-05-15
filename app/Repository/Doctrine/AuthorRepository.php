@@ -11,6 +11,8 @@ use App\Repository\Interface\IAuthorRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
+ * Repozitář pro práci s autory doplňků
+ * 
  * @extends BaseDoctrineRepository<Author>
  */
 class AuthorRepository extends BaseDoctrineRepository implements IAuthorRepository
@@ -25,6 +27,13 @@ class AuthorRepository extends BaseDoctrineRepository implements IAuthorReposito
         return new Collection($entities);
     }
     
+    // -------------------------------------------------------------------------
+    // ZÁKLADNÍ OPERACE S AUTORY
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Vytvoří nového autora
+     */
     public function create(Author $author): int
     {
         $this->entityManager->persist($author);
@@ -33,6 +42,9 @@ class AuthorRepository extends BaseDoctrineRepository implements IAuthorReposito
         return $author->getId();
     }
     
+    /**
+     * Vrátí autora s jeho doplňky
+     */
     public function getWithAddons(int $id): ?array
     {
         $author = $this->find($id);
@@ -50,6 +62,13 @@ class AuthorRepository extends BaseDoctrineRepository implements IAuthorReposito
         ];
     }
     
+    // -------------------------------------------------------------------------
+    // METODY PRO FILTROVÁNÍ A VYHLEDÁVÁNÍ
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Vyhledá autory podle zadaných filtrů
+     */
     public function findWithFilters(array $filters = [], string $sortBy = 'name', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
         $qb = $this->createQueryBuilder('a');
@@ -122,6 +141,13 @@ class AuthorRepository extends BaseDoctrineRepository implements IAuthorReposito
         return $this->paginate($qb, $page, $itemsPerPage);
     }
     
+    // -------------------------------------------------------------------------
+    // STATISTICKÉ METODY
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Získá statistiky autora a jeho doplňků
+     */
     public function getAuthorStatistics(int $authorId): array
     {
         $author = $this->find($authorId);
@@ -186,96 +212,9 @@ class AuthorRepository extends BaseDoctrineRepository implements IAuthorReposito
         ];
     }
     
-    public function getCollaborationNetwork(int $authorId, int $depth = 2): array
-    {
-        $author = $this->find($authorId);
-        
-        if (!$author) {
-            return [];
-        }
-        
-        // Initialize network with the author
-        $visitedAuthors = [$authorId => true];
-        $network = [
-            'nodes' => [
-                [
-                    'id' => $authorId,
-                    'name' => $author->getName(),
-                    'level' => 0
-                ]
-            ],
-            'links' => []
-        ];
-        
-        // Find authors who use similar tags
-        $this->buildCollaborationNetwork($author, $visitedAuthors, $network, 0, $depth);
-        
-        return $network;
-    }
-    
-    private function buildCollaborationNetwork(Author $author, array &$visitedAuthors, array &$network, int $level, int $maxDepth): void
-    {
-        if ($level >= $maxDepth) {
-            return;
-        }
-        
-        // Get all tags used by this author's addons
-        $authorTags = [];
-        foreach ($author->getAddons() as $addon) {
-            foreach ($addon->getTags() as $tag) {
-                $authorTags[] = $tag->getId();
-            }
-        }
-        
-        // Skip if author has no tags
-        if (empty($authorTags)) {
-            return;
-        }
-        
-        // Find other authors who use the same tags
-        $qb = $this->entityManager->createQueryBuilder();
-        $qb->select('a', 'COUNT(DISTINCT t.id) as tagCount')
-           ->from(Author::class, 'a')
-           ->join('a.addons', 'addon')
-           ->join('addon.tags', 't')
-           ->where('t.id IN (:tags)')
-           ->andWhere('a.id != :authorId')
-           ->setParameter('tags', array_unique($authorTags))
-           ->setParameter('authorId', $author->getId())
-           ->groupBy('a.id')
-           ->having('tagCount > 1')
-           ->orderBy('tagCount', 'DESC');
-        
-        $result = $qb->getQuery()->getResult();
-        
-        foreach ($result as $row) {
-            $collaborator = $row[0];
-            $tagCount = $row['tagCount'];
-            $collaboratorId = $collaborator->getId();
-            
-            // Add link
-            $network['links'][] = [
-                'source' => $author->getId(),
-                'target' => $collaboratorId,
-                'strength' => (int)$tagCount
-            ];
-            
-            // Add node if not already visited
-            if (!isset($visitedAuthors[$collaboratorId])) {
-                $visitedAuthors[$collaboratorId] = true;
-                
-                $network['nodes'][] = [
-                    'id' => $collaboratorId,
-                    'name' => $collaborator->getName(),
-                    'level' => $level + 1
-                ];
-                
-                // Recursively build the network
-                $this->buildCollaborationNetwork($collaborator, $visitedAuthors, $network, $level + 1, $maxDepth);
-            }
-        }
-    }
-    
+    /**
+     * Vrátí autory seřazené podle zvoleného kritéria
+     */
     public function getTopAuthors(string $metric = 'addons', int $limit = 10): array
     {
         $qb = $this->entityManager->createQueryBuilder();
@@ -339,5 +278,105 @@ class AuthorRepository extends BaseDoctrineRepository implements IAuthorReposito
         }
         
         return $authors;
+    }
+    
+    // -------------------------------------------------------------------------
+    // METODY PRO SÍŤOVOU ANALÝZU
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Vytvoří síť autorů spolupracujících prostřednictvím podobných tagů
+     */
+    public function getCollaborationNetwork(int $authorId, int $depth = 2): array
+    {
+        $author = $this->find($authorId);
+        
+        if (!$author) {
+            return [];
+        }
+        
+        // Initialize network with the author
+        $visitedAuthors = [$authorId => true];
+        $network = [
+            'nodes' => [
+                [
+                    'id' => $authorId,
+                    'name' => $author->getName(),
+                    'level' => 0
+                ]
+            ],
+            'links' => []
+        ];
+        
+        // Find authors who use similar tags
+        $this->buildCollaborationNetwork($author, $visitedAuthors, $network, 0, $depth);
+        
+        return $network;
+    }
+    
+    /**
+     * Pomocná metoda pro rekurzivní vytváření sítě spolupracujících autorů
+     */
+    private function buildCollaborationNetwork(Author $author, array &$visitedAuthors, array &$network, int $level, int $maxDepth): void
+    {
+        if ($level >= $maxDepth) {
+            return;
+        }
+        
+        // Get all tags used by this author's addons
+        $authorTags = [];
+        foreach ($author->getAddons() as $addon) {
+            foreach ($addon->getTags() as $tag) {
+                $authorTags[] = $tag->getId();
+            }
+        }
+        
+        // Skip if author has no tags
+        if (empty($authorTags)) {
+            return;
+        }
+        
+        // Find other authors who use the same tags
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('a', 'COUNT(DISTINCT t.id) as tagCount')
+           ->from(Author::class, 'a')
+           ->join('a.addons', 'addon')
+           ->join('addon.tags', 't')
+           ->where('t.id IN (:tags)')
+           ->andWhere('a.id != :authorId')
+           ->setParameter('tags', array_unique($authorTags))
+           ->setParameter('authorId', $author->getId())
+           ->groupBy('a.id')
+           ->having('tagCount > 1')
+           ->orderBy('tagCount', 'DESC');
+        
+        $result = $qb->getQuery()->getResult();
+        
+        foreach ($result as $row) {
+            $collaborator = $row[0];
+            $tagCount = $row['tagCount'];
+            $collaboratorId = $collaborator->getId();
+            
+            // Add link
+            $network['links'][] = [
+                'source' => $author->getId(),
+                'target' => $collaboratorId,
+                'strength' => (int)$tagCount
+            ];
+            
+            // Add node if not already visited
+            if (!isset($visitedAuthors[$collaboratorId])) {
+                $visitedAuthors[$collaboratorId] = true;
+                
+                $network['nodes'][] = [
+                    'id' => $collaboratorId,
+                    'name' => $collaborator->getName(),
+                    'level' => $level + 1
+                ];
+                
+                // Recursively build the network
+                $this->buildCollaborationNetwork($collaborator, $visitedAuthors, $network, $level + 1, $maxDepth);
+            }
+        }
     }
 }

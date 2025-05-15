@@ -16,6 +16,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 
 /**
+ * Repozitář pro práci s doplňky
+ * 
  * @extends BaseDoctrineRepository<Addon>
  */
 class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
@@ -30,11 +32,38 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
         return new AddonCollection($entities);
     }
     
+    // -------------------------------------------------------------------------
+    // ZÁKLADNÍ VYHLEDÁVACÍ METODY
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Najde doplněk podle slugu
+     */
     public function findBySlug(string $slug): ?Addon
     {
         return $this->findOneBy(['slug' => $slug]);
     }
     
+    /**
+     * Najde doplňky podle autora
+     */
+    public function findByAuthor(int $authorId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    {
+        $qb = $this->createQueryBuilder('a')
+            ->where('a.author = :author')
+            ->setParameter('author', $this->entityManager->getReference(Author::class, $authorId))
+            ->orderBy('a.name', 'ASC');
+
+        return $this->paginate($qb, $page, $itemsPerPage);
+    }
+    
+    // -------------------------------------------------------------------------
+    // METODY SOUVISEJÍCÍ S KATEGORIEMI
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Najde doplňky v konkrétní kategorii
+     */
     public function findByCategory(int $categoryId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
         $qb = $this->createQueryBuilder('a')
@@ -45,6 +74,9 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
         return $this->paginate($qb, $page, $itemsPerPage);
     }
     
+    /**
+     * Najde doplňky v kategorii a všech jejích podkategoriích
+     */
     public function findByCategoryRecursive(int $categoryId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
         // Get all subcategory IDs
@@ -63,6 +95,9 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
         return $this->paginate($qb, $page, $itemsPerPage);
     }
     
+    /**
+     * Pomocná metoda pro rekurzivní hledání ID všech podkategorií
+     */
     private function findAllSubcategoryIds(int $parentId, array &$categoryIds): void
     {
         $qb = $this->entityManager->createQueryBuilder();
@@ -80,16 +115,13 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
         }
     }
     
-    public function findByAuthor(int $authorId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
-    {
-        $qb = $this->createQueryBuilder('a')
-            ->where('a.author = :author')
-            ->setParameter('author', $this->entityManager->getReference(Author::class, $authorId))
-            ->orderBy('a.name', 'ASC');
-
-        return $this->paginate($qb, $page, $itemsPerPage);
-    }
+    // -------------------------------------------------------------------------
+    // METODY PRO STATISTIKY A DOPORUČENÍ
+    // -------------------------------------------------------------------------
     
+    /**
+     * Najde nejstahovanější doplňky
+     */
     public function findPopular(int $limit = 10): Collection
     {
         $addons = $this->createQueryBuilder('a')
@@ -101,6 +133,9 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
         return new AddonCollection($addons);
     }
     
+    /**
+     * Najde nejlépe hodnocené doplňky
+     */
     public function findTopRated(int $limit = 10): Collection
     {
         $addons = $this->createQueryBuilder('a')
@@ -112,6 +147,9 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
         return new AddonCollection($addons);
     }
     
+    /**
+     * Najde nejnovější doplňky
+     */
     public function findNewest(int $limit = 10): Collection
     {
         $addons = $this->createQueryBuilder('a')
@@ -123,144 +161,9 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
         return new AddonCollection($addons);
     }
     
-    public function search(string $query, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
-    {
-        $qb = $this->createQueryBuilder('a')
-            ->where('a.name LIKE :query')
-            ->orWhere('a.description LIKE :query')
-            ->setParameter('query', '%' . $query . '%')
-            ->orderBy('a.name', 'ASC');
-
-        return $this->paginate($qb, $page, $itemsPerPage);
-    }
-    
-    public function incrementDownloadCount(int $id): int
-    {
-        $addon = $this->find($id);
-        if ($addon) {
-            $addon->incrementDownloadsCount();
-            $this->entityManager->flush();
-            return 1;
-        }
-        return 0;
-    }
-    
-    public function updateRating(int $id): void
-    {
-        $addon = $this->find($id);
-        if (!$addon) {
-            return;
-        }
-        
-        $qb = $this->entityManager->createQueryBuilder();
-        $avgRating = $qb->select('AVG(r.rating)')
-            ->from('App\Entity\AddonReview', 'r')
-            ->where('r.addon = :addon')
-            ->setParameter('addon', $addon)
-            ->getQuery()
-            ->getSingleScalarResult();
-        
-        $addon->setRating($avgRating ?: 0);
-        $this->entityManager->flush();
-    }
-    
-    public function createWithRelated(Addon $addon, array $screenshots = [], array $tagIds = []): int
-    {
-        $this->entityManager->beginTransaction();
-        
-        try {
-            // Add screenshots
-            foreach ($screenshots as $screenshot) {
-                $screenshot->setAddon($addon);
-                $addon->addScreenshot($screenshot);
-                $this->entityManager->persist($screenshot);
-            }
-            
-            // Add tags
-            foreach ($tagIds as $tagId) {
-                $tag = $this->entityManager->getReference(Tag::class, $tagId);
-                $addon->addTag($tag);
-            }
-            
-            $this->entityManager->persist($addon);
-            $this->entityManager->flush();
-            $this->entityManager->commit();
-            
-            return $addon->getId();
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
-    }
-    
-    public function updateWithRelated(Addon $addon, array $screenshots = [], array $tagIds = []): int
-    {
-        $this->entityManager->beginTransaction();
-        
-        try {
-            // Remove existing screenshots
-            foreach ($addon->getScreenshots() as $screenshot) {
-                $addon->removeScreenshot($screenshot);
-                $this->entityManager->remove($screenshot);
-            }
-            
-            // Add new screenshots
-            foreach ($screenshots as $screenshot) {
-                $screenshot->setAddon($addon);
-                $addon->addScreenshot($screenshot);
-                $this->entityManager->persist($screenshot);
-            }
-            
-            // Remove existing tags
-            foreach ($addon->getTags() as $tag) {
-                $addon->removeTag($tag);
-            }
-            
-            // Add new tags
-            foreach ($tagIds as $tagId) {
-                $tag = $this->entityManager->getReference(Tag::class, $tagId);
-                $addon->addTag($tag);
-            }
-            
-            $this->entityManager->persist($addon);
-            $this->entityManager->flush();
-            $this->entityManager->commit();
-            
-            return $addon->getId();
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
-    }
-    
-    public function getWithRelated(int $id): ?array
-    {
-        $addon = $this->find($id);
-        
-        if (!$addon) {
-            return null;
-        }
-        
-        // Eager load associated entities
-        $author = $addon->getAuthor();
-        $category = $addon->getCategory();
-        $screenshots = $addon->getScreenshots()->toArray();
-        $tags = $addon->getTags()->toArray();
-        
-        // Get reviews
-        $reviews = $this->entityManager->getRepository('App\Entity\AddonReview')
-            ->findBy(['addon' => $addon], ['created_at' => 'DESC']);
-        
-        return [
-            'addon' => $addon,
-            'author' => $author,
-            'category' => $category,
-            'screenshots' => $screenshots,
-            'tags' => $tags,
-            'reviews' => $reviews
-        ];
-    }
-    
+    /**
+     * Najde podobné doplňky k zadanému doplňku
+     */
     public function findSimilarAddons(int $addonId, int $limit = 5): Collection
     {
         $addon = $this->find($addonId);
@@ -296,6 +199,27 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
         return new AddonCollection($similarAddons);
     }
     
+    // -------------------------------------------------------------------------
+    // METODY PRO VYHLEDÁVÁNÍ A FILTROVÁNÍ
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Vyhledá doplňky podle klíčového slova
+     */
+    public function search(string $query, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    {
+        $qb = $this->createQueryBuilder('a')
+            ->where('a.name LIKE :query')
+            ->orWhere('a.description LIKE :query')
+            ->setParameter('query', '%' . $query . '%')
+            ->orderBy('a.name', 'ASC');
+
+        return $this->paginate($qb, $page, $itemsPerPage);
+    }
+    
+    /**
+     * Pokročilé vyhledávání s možností filtrování
+     */
     public function advancedSearch(string $query, array $fields = ['name', 'description'], array $filters = [], int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
         $qb = $this->createQueryBuilder('a');
@@ -327,6 +251,9 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
         return $this->paginate($qb, $page, $itemsPerPage);
     }
     
+    /**
+     * Pomocná metoda pro aplikaci filtrů na dotaz
+     */
     private function applyFilters(QueryBuilder $qb, array $filters): void
     {
         foreach ($filters as $key => $value) {
@@ -410,5 +337,155 @@ class AddonRepository extends BaseDoctrineRepository implements IAddonRepository
                     break;
             }
         }
+    }
+    
+    // -------------------------------------------------------------------------
+    // METODY PRO AKTUALIZACI A MANIPULACI S DATY
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Zvýší počet stažení doplňku
+     */
+    public function incrementDownloadCount(int $id): int
+    {
+        $addon = $this->find($id);
+        if ($addon) {
+            $addon->incrementDownloadsCount();
+            $this->entityManager->flush();
+            return 1;
+        }
+        return 0;
+    }
+    
+    /**
+     * Aktualizuje hodnocení doplňku
+     */
+    public function updateRating(int $id): void
+    {
+        $addon = $this->find($id);
+        if (!$addon) {
+            return;
+        }
+        
+        $qb = $this->entityManager->createQueryBuilder();
+        $avgRating = $qb->select('AVG(r.rating)')
+            ->from('App\Entity\AddonReview', 'r')
+            ->where('r.addon = :addon')
+            ->setParameter('addon', $addon)
+            ->getQuery()
+            ->getSingleScalarResult();
+        
+        $addon->setRating($avgRating ?: 0);
+        $this->entityManager->flush();
+    }
+    
+    // -------------------------------------------------------------------------
+    // METODY PRO PRÁCI S RELAČNÍMI DATY
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Vytvoří nový doplněk včetně souvisejících entit
+     */
+    public function createWithRelated(Addon $addon, array $screenshots = [], array $tagIds = []): int
+    {
+        $this->entityManager->beginTransaction();
+        
+        try {
+            // Add screenshots
+            foreach ($screenshots as $screenshot) {
+                $screenshot->setAddon($addon);
+                $addon->addScreenshot($screenshot);
+                $this->entityManager->persist($screenshot);
+            }
+            
+            // Add tags
+            foreach ($tagIds as $tagId) {
+                $tag = $this->entityManager->getReference(Tag::class, $tagId);
+                $addon->addTag($tag);
+            }
+            
+            $this->entityManager->persist($addon);
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+            
+            return $addon->getId();
+        } catch (\Exception $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
+    }
+    
+    /**
+     * Aktualizuje doplněk včetně souvisejících entit
+     */
+    public function updateWithRelated(Addon $addon, array $screenshots = [], array $tagIds = []): int
+    {
+        $this->entityManager->beginTransaction();
+        
+        try {
+            // Remove existing screenshots
+            foreach ($addon->getScreenshots() as $screenshot) {
+                $addon->removeScreenshot($screenshot);
+                $this->entityManager->remove($screenshot);
+            }
+            
+            // Add new screenshots
+            foreach ($screenshots as $screenshot) {
+                $screenshot->setAddon($addon);
+                $addon->addScreenshot($screenshot);
+                $this->entityManager->persist($screenshot);
+            }
+            
+            // Remove existing tags
+            foreach ($addon->getTags() as $tag) {
+                $addon->removeTag($tag);
+            }
+            
+            // Add new tags
+            foreach ($tagIds as $tagId) {
+                $tag = $this->entityManager->getReference(Tag::class, $tagId);
+                $addon->addTag($tag);
+            }
+            
+            $this->entityManager->persist($addon);
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+            
+            return $addon->getId();
+        } catch (\Exception $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
+    }
+    
+    /**
+     * Načte doplněk včetně všech souvisejících entit
+     */
+    public function getWithRelated(int $id): ?array
+    {
+        $addon = $this->find($id);
+        
+        if (!$addon) {
+            return null;
+        }
+        
+        // Eager load associated entities
+        $author = $addon->getAuthor();
+        $category = $addon->getCategory();
+        $screenshots = $addon->getScreenshots()->toArray();
+        $tags = $addon->getTags()->toArray();
+        
+        // Get reviews
+        $reviews = $this->entityManager->getRepository('App\Entity\AddonReview')
+            ->findBy(['addon' => $addon], ['created_at' => 'DESC']);
+        
+        return [
+            'addon' => $addon,
+            'author' => $author,
+            'category' => $category,
+            'screenshots' => $screenshots,
+            'tags' => $tags,
+            'reviews' => $reviews
+        ];
     }
 }

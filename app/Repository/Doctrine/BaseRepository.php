@@ -13,6 +13,8 @@ use Doctrine\ORM\Tools\Pagination\Paginator;
 use Doctrine\ORM\QueryBuilder;
 
 /**
+ * Základní repozitář pro Doctrine entity
+ * 
  * @template T of object
  * @extends EntityRepository<T>
  * @implements IBaseRepository<T>
@@ -22,6 +24,16 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
     protected EntityManagerInterface $entityManager;
     protected string $entityClass;
 
+    // -------------------------------------------------------------------------
+    // KONSTRUKTOR A INICIALIZACE
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Konstruktor základního repozitáře
+     * 
+     * @param EntityManagerInterface $entityManager Entity Manager instance
+     * @param string $entityClass Název třídy entity
+     */
     public function __construct(EntityManagerInterface $entityManager, string $entityClass)
     {
         $this->entityManager = $entityManager;
@@ -31,8 +43,14 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
         parent::__construct($entityManager, $metadata);
     }
 
+    // -------------------------------------------------------------------------
+    // ZÁKLADNÍ CRUD OPERACE
+    // -------------------------------------------------------------------------
+
     /**
-     * Get all records
+     * Vrátí všechny záznamy entity
+     * 
+     * @return iterable<T> Kolekce všech entit
      */
     public function findAll(): iterable
     {
@@ -40,10 +58,10 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
     }
 
     /**
-     * Get record by ID
+     * Najde entitu podle ID
      * 
-     * @param int $id
-     * @return T|null The entity or null if not found
+     * @param int $id ID entity
+     * @return T|null Entita nebo null, pokud nebyla nalezena
      */
     public function findById(int $id): ?object
     {
@@ -51,32 +69,10 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
     }
 
     /**
-     * Find one record by given criteria
+     * Uloží novou nebo aktualizuje existující entitu
      * 
-     * @param array $criteria
-     * @return T|null The entity or null if not found
-     */
-    public function findOneBy(array $criteria): ?object
-    {
-        return parent::findOneBy($criteria);
-    }
-
-    /**
-     * Find records by given criteria
-     * 
-     * @param array $criteria
-     * @return iterable<T>
-     */
-    public function findBy(array $criteria = []): iterable
-    {
-        return parent::findBy($criteria);
-    }
-
-    /**
-     * Create a new record or update existing
-     * 
-     * @param T $entity
-     * @return int The ID of the record
+     * @param T $entity Entita k uložení
+     * @return int ID uložené entity
      */
     public function save(object $entity): int
     {
@@ -87,10 +83,10 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
     }
 
     /**
-     * Delete a record
+     * Smaže entitu podle ID
      * 
-     * @param int $id
-     * @return int Number of affected rows
+     * @param int $id ID entity ke smazání
+     * @return int Počet smazaných záznamů (0 nebo 1)
      */
     public function delete(int $id): int
     {
@@ -104,34 +100,45 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
         return 0;
     }
 
-    /**
-     * Count records based on criteria
-     * 
-     * @param array $criteria
-     * @return int
-     */
-    public function count(array $criteria = []): int
-    {
-        $qb = $this->createQueryBuilder('e')
-            ->select('COUNT(e.id)');
-        
-        foreach ($criteria as $field => $value) {
-            $qb->andWhere("e.$field = :$field")
-               ->setParameter($field, $value);
-        }
-        
-        return (int) $qb->getQuery()->getSingleScalarResult();
-    }
+    // -------------------------------------------------------------------------
+    // VYHLEDÁVACÍ METODY
+    // -------------------------------------------------------------------------
+
+/**
+ * Najde jeden záznam podle kritérií
+ * 
+ * @param array $criteria Kritéria vyhledávání
+ * @param array|null $orderBy Kritéria řazení
+ * @return T|null Entita nebo null, pokud nebyla nalezena
+ */
+public function findOneBy(array $criteria, ?array $orderBy = null): ?object
+{
+    return parent::findOneBy($criteria, $orderBy);
+}
 
     /**
-     * Find records with pagination
+ * Najde záznamy podle kritérií
+ * 
+ * @param array $criteria Kritéria vyhledávání
+ * @param array|null $orderBy Kritéria řazení
+ * @param int|null $limit Maximální počet výsledků
+ * @param int|null $offset Posun výsledků
+ * @return iterable<T> Kolekce nalezených entit
+ */
+public function findBy(array $criteria = [], ?array $orderBy = null, $limit = null, $offset = null): iterable
+{
+    return parent::findBy($criteria, $orderBy, $limit, $offset);
+}
+
+    /**
+     * Najde záznamy se stránkováním
      * 
-     * @param array $criteria
-     * @param int $page
-     * @param int $itemsPerPage
-     * @param string $orderColumn
-     * @param string $orderDir
-     * @return PaginatedCollection<T>
+     * @param array $criteria Kritéria pro vyhledávání
+     * @param int $page Číslo stránky (začíná od 1)
+     * @param int $itemsPerPage Počet položek na stránku
+     * @param string $orderColumn Sloupec pro řazení
+     * @param string $orderDir Směr řazení (ASC nebo DESC)
+     * @return PaginatedCollection<T> Stránkovaná kolekce entit
      */
     public function findWithPagination(array $criteria = [], int $page = 1, int $itemsPerPage = 10, string $orderColumn = 'id', string $orderDir = 'ASC'): PaginatedCollection
     {
@@ -154,19 +161,46 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
         return $this->paginate($qb, $page, $itemsPerPage);
     }
 
+    // -------------------------------------------------------------------------
+    // METODY PRO POČÍTÁNÍ A OVĚŘOVÁNÍ
+    // -------------------------------------------------------------------------
+
     /**
-     * Check if entity with given ID exists
+     * Spočítá záznamy podle kritérií
      * 
-     * @param int $id
-     * @return bool
+     * @param array $criteria Kritéria pro počítání záznamů
+     * @return int Počet záznamů
+     */
+    public function count(array $criteria = []): int
+    {
+        $qb = $this->createQueryBuilder('e')
+            ->select('COUNT(e.id)');
+        
+        foreach ($criteria as $field => $value) {
+            $qb->andWhere("e.$field = :$field")
+               ->setParameter($field, $value);
+        }
+        
+        return (int) $qb->getQuery()->getSingleScalarResult();
+    }
+
+    /**
+     * Ověří, zda existuje entita s daným ID
+     * 
+     * @param int $id ID entity k ověření
+     * @return bool Výsledek ověření
      */
     public function exists(int $id): bool
     {
         return $this->find($id) !== null;
     }
 
+    // -------------------------------------------------------------------------
+    // TRANSAKČNÍ METODY
+    // -------------------------------------------------------------------------
+
     /**
-     * Begin transaction
+     * Zahájí transakci
      */
     public function beginTransaction(): void
     {
@@ -174,7 +208,7 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
     }
 
     /**
-     * Commit transaction
+     * Potvrdí transakci
      */
     public function commit(): void
     {
@@ -183,7 +217,7 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
     }
 
     /**
-     * Rollback transaction
+     * Vrátí transakci
      */
     public function rollback(): void
     {
@@ -191,11 +225,11 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
     }
 
     /**
-     * Execute a transaction with callback
+     * Provede transakci s callbackem
      * 
-     * @param callable $callback
-     * @return mixed
-     * @throws \Exception
+     * @param callable $callback Callback, který se má provést v transakci
+     * @return mixed Výsledek callbacku
+     * @throws \Exception Při chybě v transakci
      */
     public function transaction(callable $callback)
     {
@@ -210,13 +244,17 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
         }
     }
 
+    // -------------------------------------------------------------------------
+    // POMOCNÉ METODY
+    // -------------------------------------------------------------------------
+
     /**
-     * Helper method to paginate results
+     * Pomocná metoda pro stránkování výsledků
      * 
-     * @param QueryBuilder $qb
-     * @param int $page
-     * @param int $itemsPerPage
-     * @return PaginatedCollection<T>
+     * @param QueryBuilder $qb Query builder instance
+     * @param int $page Číslo stránky
+     * @param int $itemsPerPage Počet položek na stránku
+     * @return PaginatedCollection<T> Stránkovaná kolekce entit
      */
     protected function paginate(QueryBuilder $qb, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
@@ -241,10 +279,10 @@ abstract class BaseDoctrineRepository extends EntityRepository implements IBaseR
     }
 
     /**
-     * Create a collection from entities - to be overridden in child classes
+     * Vytvoří typovanou kolekci z pole entit
      * 
-     * @param array<T> $entities
-     * @return Collection<T>
+     * @param array<T> $entities Pole entit
+     * @return Collection<T> Typovaná kolekce entit
      */
     abstract protected function createCollection(array $entities): Collection;
 }
