@@ -9,9 +9,12 @@ use DateTime;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 
 #[ORM\Entity(repositoryClass: AddonRepository::class)]
 #[ORM\Table(name: 'addons')]
+#[UniqueEntity(fields: ['slug'], message: 'Tento slug je již používán.')]
 class Addon
 {
     #[ORM\Id]
@@ -20,59 +23,158 @@ class Addon
     private int $id;
 
     #[ORM\Column(type: 'string', length: 255)]
+    #[Assert\NotBlank(message: 'Název nesmí být prázdný.')]
+    #[Assert\Length(
+        min: 3,
+        max: 255,
+        minMessage: 'Název musí mít alespoň {{ limit }} znaky.',
+        maxMessage: 'Název nesmí být delší než {{ limit }} znaků.'
+    )]
     private string $name;
 
     #[ORM\Column(type: 'string', length: 255, unique: true)]
+    #[Assert\NotBlank(message: 'Slug nesmí být prázdný.')]
+    #[Assert\Length(
+        min: 3,
+        max: 255,
+        minMessage: 'Slug musí mít alespoň {{ limit }} znaky.',
+        maxMessage: 'Slug nesmí být delší než {{ limit }} znaků.'
+    )]
+    #[Assert\Regex(
+        pattern: '/^[a-z0-9-]+$/',
+        message: 'Slug může obsahovat pouze malá písmena, čísla a pomlčky.'
+    )]
     private string $slug;
 
     #[ORM\Column(type: 'text', nullable: true)]
+    #[Assert\Length(
+        max: 10000,
+        maxMessage: 'Popis nesmí být delší než {{ limit }} znaků.'
+    )]
     private ?string $description = null;
 
     #[ORM\Column(type: 'string', length: 50)]
+    #[Assert\NotBlank(message: 'Verze nesmí být prázdná.')]
+    #[Assert\Length(
+        max: 50,
+        maxMessage: 'Verze nesmí být delší než {{ limit }} znaků.'
+    )]
+    #[Assert\Regex(
+        pattern: '/^(\d+\.)?(\d+\.)?(\*|\d+)$/',
+        message: 'Verze musí být ve formátu X.Y.Z.'
+    )]
     private string $version;
 
     #[ORM\ManyToOne(targetEntity: Author::class, inversedBy: 'addons')]
     #[ORM\JoinColumn(name: 'author_id', referencedColumnName: 'id', nullable: false)]
+    #[Assert\NotNull(message: 'Autor musí být vybrán.')]
     private Author $author;
 
     #[ORM\ManyToOne(targetEntity: Category::class, inversedBy: 'addons')]
     #[ORM\JoinColumn(name: 'category_id', referencedColumnName: 'id', nullable: false)]
+    #[Assert\NotNull(message: 'Kategorie musí být vybrána.')]
     private Category $category;
 
     #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    #[Assert\Url(message: 'URL repozitáře musí být platná URL adresa.')]
+    #[Assert\Length(
+        max: 255,
+        maxMessage: 'URL repozitáře nesmí být delší než {{ limit }} znaků.'
+    )]
     private ?string $repository_url = null;
 
     #[ORM\Column(type: 'string', length: 255)]
+    #[Assert\NotBlank(message: 'URL pro stažení nesmí být prázdná.')]
+    #[Assert\Url(message: 'URL pro stažení musí být platná URL adresa.')]
+    #[Assert\Length(
+        max: 255,
+        maxMessage: 'URL pro stažení nesmí být delší než {{ limit }} znaků.'
+    )]
     private string $download_url;
 
     #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    #[Assert\Url(message: 'URL ikony musí být platná URL adresa.')]
+    #[Assert\Length(
+        max: 255,
+        maxMessage: 'URL ikony nesmí být delší než {{ limit }} znaků.'
+    )]
     private ?string $icon_url = null;
 
     #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    #[Assert\Url(message: 'URL fanart musí být platná URL adresa.')]
+    #[Assert\Length(
+        max: 255,
+        maxMessage: 'URL fanart nesmí být delší než {{ limit }} znaků.'
+    )]
     private ?string $fanart_url = null;
 
     #[ORM\Column(type: 'string', length: 20, nullable: true)]
+    #[Assert\Length(
+        max: 20,
+        maxMessage: 'Minimální verze Kodi nesmí být delší než {{ limit }} znaků.'
+    )]
+    #[Assert\Regex(
+        pattern: '/^\d+(\.\d+)*$/',
+        message: 'Minimální verze Kodi musí být ve správném formátu (např. 19.0).'
+    )]
     private ?string $kodi_version_min = null;
 
     #[ORM\Column(type: 'string', length: 20, nullable: true)]
+    #[Assert\Length(
+        max: 20,
+        maxMessage: 'Maximální verze Kodi nesmí být delší než {{ limit }} znaků.'
+    )]
+    #[Assert\Regex(
+        pattern: '/^\d+(\.\d+)*$/',
+        message: 'Maximální verze Kodi musí být ve správném formátu (např. 19.0).'
+    )]
     private ?string $kodi_version_max = null;
 
     #[ORM\Column(type: 'integer', options: ['default' => 0])]
+    #[Assert\GreaterThanOrEqual(
+        value: 0,
+        message: 'Počet stažení nemůže být záporný.'
+    )]
+    #[Assert\Type(
+        type: 'integer',
+        message: 'Počet stažení musí být celé číslo.'
+    )]
     private int $downloads_count = 0;
 
     #[ORM\Column(type: 'float', options: ['default' => 0])]
+    #[Assert\Range(
+        min: 0,
+        max: 5,
+        notInRangeMessage: 'Hodnocení musí být mezi {{ min }} a {{ max }}.'
+    )]
+    #[Assert\Type(
+        type: 'float',
+        message: 'Hodnocení musí být číslo.'
+    )]
     private float $rating = 0.00;
 
     #[ORM\Column(type: 'datetime')]
+    #[Assert\NotNull(message: 'Datum vytvoření nesmí být prázdné.')]
+    #[Assert\Type(
+        type: 'DateTime',
+        message: 'Datum vytvoření musí být platné datum.'
+    )]
     private DateTime $created_at;
 
     #[ORM\Column(type: 'datetime')]
+    #[Assert\NotNull(message: 'Datum aktualizace nesmí být prázdné.')]
+    #[Assert\Type(
+        type: 'DateTime',
+        message: 'Datum aktualizace musí být platné datum.'
+    )]
     private DateTime $updated_at;
 
     #[ORM\OneToMany(mappedBy: 'addon', targetEntity: AddonReview::class, cascade: ['remove'])]
+    #[Assert\Valid] // Validuje všechny položky v kolekci
     private Collection $reviews;
 
     #[ORM\OneToMany(mappedBy: 'addon', targetEntity: Screenshot::class, cascade: ['persist', 'remove'])]
+    #[Assert\Valid] // Validuje všechny položky v kolekci
     private Collection $screenshots;
 
     #[ORM\ManyToMany(targetEntity: Tag::class, inversedBy: 'addons')]

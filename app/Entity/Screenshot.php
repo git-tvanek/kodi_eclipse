@@ -39,7 +39,7 @@ class Screenshot
         return $this->addon;
     }
 
-    public function setAddon(Addon $addon): self
+    public function setAddon(?Addon $addon): self
     {
         $this->addon = $addon;
         return $this;
