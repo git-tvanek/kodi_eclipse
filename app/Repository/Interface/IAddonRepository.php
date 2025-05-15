@@ -6,7 +6,9 @@ namespace App\Repository\Interface;
 
 use App\Entity\Addon;
 use App\Collection\Collection;
+use App\Collection\AddonCollection;
 use App\Collection\PaginatedCollection;
+use Doctrine\ORM\QueryBuilder;
 
 /**
  * Rozhraní pro repozitář doplňků
@@ -109,12 +111,14 @@ interface IAddonRepository extends IBaseRepository
     public function advancedSearch(string $query, array $fields = ['name', 'description'], array $filters = [], int $page = 1, int $itemsPerPage = 10): PaginatedCollection;
     
     /**
-     * Zvýší počet stažení doplňku
+     * Zvýší počet stažení doplňku a zaloguje stažení
      * 
      * @param int $id ID doplňku
-     * @return int Počet aktualizovaných záznamů (0 nebo 1)
+     * @param string|null $ipAddress IP adresa uživatele (volitelné)
+     * @param string|null $userAgent User agent uživatele (volitelné)
+     * @return int Počet aktualizovaných záznamů
      */
-    public function incrementDownloadCount(int $id): int;
+    public function incrementDownloadCount(int $id, ?string $ipAddress = null, ?string $userAgent = null): int;
     
     /**
      * Aktualizuje hodnocení doplňku
@@ -152,4 +156,61 @@ interface IAddonRepository extends IBaseRepository
      * @return array|null Pole s doplňkem a souvisejícími entitami, nebo null pokud doplněk neexistuje
      */
     public function getWithRelated(int $id): ?array;
+    
+    /**
+     * Získá statistiky stažení podle doplňků
+     * 
+     * @param int $limit Maximální počet doplňků k vrácení
+     * @param \DateTime|null $startDate Počáteční datum pro filtrování
+     * @return array Statistiky stažení
+     */
+    public function getDownloadsByAddon(int $limit = 10, ?\DateTime $startDate = null): array;
+    
+    /**
+     * Získá statistiky stažení podle denní doby
+     * 
+     * @param \DateTime|null $startDate Počáteční datum pro filtrování
+     * @return array Statistiky podle hodin
+     */
+    public function getDownloadsByHourOfDay(?\DateTime $startDate = null): array;
+    
+    /**
+     * Získá statistiky doplňků v čase
+     * 
+     * @param string $interval 'day', 'week', 'month', or 'year'
+     * @param int $limit Počet intervalů k vrácení
+     * @param string $metric 'downloads', 'ratings', or 'addons'
+     * @return array Statistiky v čase
+     */
+    public function getStatisticsOverTime(string $interval = 'month', int $limit = 12, string $metric = 'downloads'): array;
+    
+    /**
+     * Získá distribuci doplňků podle kategorií
+     *
+     * @return array Distribuce doplňků
+     */
+    public function getAddonDistributionByCategory(): array;
+    
+    /**
+     * Získá distribuci hodnocení
+     *
+     * @return array Distribuce hodnocení
+     */
+    public function getRatingDistribution(): array;
+    
+    /**
+     * Získá nejlepší autory podle počtu stažení
+     *
+     * @param int $limit
+     * @return array Nejlepší autoři
+     */
+    public function getTopAuthorsByDownloads(int $limit = 10): array;
+    
+    /**
+     * Vytvoří QueryBuilder pro filtrování doplňků
+     * 
+     * @param array $filters Pole filtrů
+     * @return QueryBuilder Nakonfigurovaný query builder
+     */
+    public function createFilteredQueryBuilder(array $filters = []): QueryBuilder;
 }
