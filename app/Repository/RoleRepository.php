@@ -14,7 +14,7 @@ use Doctrine\ORM\EntityManagerInterface;
 /**
  * @extends BaseDoctrineRepository<Role>
  */
-class RoleRepository extends BaseDoctrineRepository implements IRoleRepository
+class RoleRepository extends BaseRepository implements IRoleRepository
 {
     public function __construct(EntityManagerInterface $entityManager)
     {

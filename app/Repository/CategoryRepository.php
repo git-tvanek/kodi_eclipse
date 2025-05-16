@@ -13,7 +13,7 @@ use Doctrine\ORM\EntityManagerInterface;
 /**
  * @extends BaseDoctrineRepository<Category>
  */
-class CategoryRepository extends BaseDoctrineRepository implements ICategoryRepository
+class CategoryRepository extends BaseRepository implements ICategoryRepository
 {
     public function __construct(EntityManagerInterface $entityManager)
     {

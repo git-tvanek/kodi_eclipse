@@ -15,7 +15,7 @@ use Nette\Security\Passwords;
 /**
  * @extends BaseDoctrineRepository<User>
  */
-class UserRepository extends BaseDoctrineRepository implements IUserRepository
+class UserRepository extends BaseRepository implements IUserRepository
 {
     private Passwords $passwords;
     

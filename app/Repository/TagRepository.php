@@ -16,7 +16,7 @@ use Nette\Utils\Strings;
 /**
  * @extends BaseDoctrineRepository<Tag>
  */
-class TagRepository extends BaseDoctrineRepository implements ITagRepository
+class TagRepository extends BaseRepository implements ITagRepository
 {
     public function __construct(EntityManagerInterface $entityManager)
     {

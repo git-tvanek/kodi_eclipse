@@ -15,7 +15,7 @@ use Doctrine\ORM\QueryBuilder;
 /**
  * @extends BaseDoctrineRepository<Permission>
  */
-class PermissionRepository extends BaseDoctrineRepository implements IPermissionRepository
+class PermissionRepository extends BaseRepository implements IPermissionRepository
 {
     public function __construct(EntityManagerInterface $entityManager)
     {

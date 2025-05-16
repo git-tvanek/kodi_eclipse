@@ -15,7 +15,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * 
  * @extends BaseDoctrineRepository<Author>
  */
-class AuthorRepository extends BaseDoctrineRepository implements IAuthorRepository
+class AuthorRepository extends BaseRepository implements IAuthorRepository
 {
     public function __construct(EntityManagerInterface $entityManager)
     {

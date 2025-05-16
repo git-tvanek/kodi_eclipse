@@ -13,7 +13,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * 
  * @extends BaseDoctrineRepository<DownloadLog>
  */
-class DownloadLogRepository extends BaseDoctrineRepository
+class DownloadLogRepository extends BaseRepository
 {
     /**
      * Konstruktor

@@ -13,7 +13,7 @@ use Doctrine\ORM\EntityManagerInterface;
 /**
  * @extends BaseDoctrineRepository<Screenshot>
  */
-class ScreenshotRepository extends BaseDoctrineRepository
+class ScreenshotRepository extends BaseRepository
 {
     public function __construct(EntityManagerInterface $entityManager)
     {
