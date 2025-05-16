@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Repository\Doctrine;
+namespace App\Repository;
 
 use App\Entity\Author;
 use App\Collection\Collection;
