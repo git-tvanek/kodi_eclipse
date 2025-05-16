@@ -6,7 +6,7 @@ namespace App\Repository\Query;
 
 use Nette\Database\Explorer;
 use Nette\Database\Table\Selection;
-use App\Model\Addon;
+use App\Entity\Addon;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 
