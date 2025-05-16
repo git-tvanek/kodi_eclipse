@@ -2,84 +2,76 @@
 
 declare(strict_types=1);
 
-namespace App\Repository;
+namespace App\Repository\Doctrine;
 
-use App\Model\Author;
-use App\Model\Addon;
+use App\Entity\Author;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IAuthorRepository;
-use Nette\Database\Explorer;
+use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * @extends BaseRepository<Author>
- * @implements AuthorRepositoryInterface
+ * Repozitář pro práci s autory doplňků
+ * 
+ * @extends BaseDoctrineRepository<Author>
  */
-class AuthorRepository extends BaseRepository implements IAuthorRepository
+class AuthorRepository extends BaseDoctrineRepository implements IAuthorRepository
 {
-    public function __construct(Explorer $database)
+    public function __construct(EntityManagerInterface $entityManager)
     {
-        parent::__construct($database);
-        $this->tableName = 'authors';
-        $this->entityClass = Author::class;
+        parent::__construct($entityManager, Author::class);
     }
-
+    
+    protected function createCollection(array $entities): Collection
+    {
+        return new Collection($entities);
+    }
+    
+    // -------------------------------------------------------------------------
+    // ZÁKLADNÍ OPERACE S AUTORY
+    // -------------------------------------------------------------------------
+    
     /**
-     * Create a new author
-     * 
-     * @param Author $author
-     * @return int
+     * Vytvoří nového autora
      */
     public function create(Author $author): int
     {
-        // Set timestamps
-        $author->created_at = new \DateTime();
+        $this->entityManager->persist($author);
+        $this->entityManager->flush();
         
-        return $this->save($author);
+        return $author->getId();
     }
-
+    
     /**
-     * Find author with their addons
-     * 
-     * @param int $id
-     * @return array|null
+     * Vrátí autora s jeho doplňky
      */
     public function getWithAddons(int $id): ?array
     {
-        $author = $this->findById($id);
+        $author = $this->find($id);
         
         if (!$author) {
             return null;
         }
         
-        $addonRows = $this->database->table('addons')
-            ->where('author_id', $id)
-            ->order('name ASC');
-        
-        $addons = [];
-        foreach ($addonRows as $row) {
-            $addons[] = Addon::fromArray($row->toArray());
-        }
+        // Load addons
+        $addons = $author->getAddons();
         
         return [
             'author' => $author,
-            'addons' => new Collection($addons)
+            'addons' => new Collection($addons->toArray())
         ];
     }
-
+    
+    // -------------------------------------------------------------------------
+    // METODY PRO FILTROVÁNÍ A VYHLEDÁVÁNÍ
+    // -------------------------------------------------------------------------
+    
     /**
-     * Find authors with advanced filtering and sorting
-     * 
-     * @param array $filters Filtering criteria
-     * @param string $sortBy Field to sort by
-     * @param string $sortDir Sort direction (ASC or DESC)
-     * @param int $page Page number
-     * @param int $itemsPerPage Items per page
-     * @return PaginatedCollection<Author>
+     * Vyhledá autory podle zadaných filtrů
      */
     public function findWithFilters(array $filters = [], string $sortBy = 'name', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $selection = $this->getTable();
+        $qb = $this->createQueryBuilder('a');
         
         // Apply filters
         foreach ($filters as $key => $value) {
@@ -89,333 +81,302 @@ class AuthorRepository extends BaseRepository implements IAuthorRepository
             
             switch ($key) {
                 case 'name':
-                    $selection->where("name LIKE ?", "%{$value}%");
+                    $qb->andWhere('a.name LIKE :name')
+                       ->setParameter('name', '%' . $value . '%');
                     break;
-                    
+                
                 case 'email':
-                    $selection->where("email LIKE ?", "%{$value}%");
+                    $qb->andWhere('a.email LIKE :email')
+                       ->setParameter('email', '%' . $value . '%');
                     break;
-                    
+                
                 case 'min_addons':
-                    $selection->where('id IN ?', 
-                        $this->database->query("
-                            SELECT author_id FROM (
-                                SELECT author_id, COUNT(*) as addon_count 
-                                FROM addons 
-                                GROUP BY author_id
-                                HAVING addon_count >= ?
-                            ) AS subquery
-                        ", $value)->fetchAll()
-                    );
+                    $qb->join('a.addons', 'addon')
+                       ->groupBy('a.id')
+                       ->having('COUNT(addon.id) >= :minAddons')
+                       ->setParameter('minAddons', $value);
                     break;
-                    
+                
                 case 'has_website':
                     if ($value) {
-                        $selection->where('website IS NOT NULL AND website != ?', '');
+                        $qb->andWhere('a.website IS NOT NULL')
+                           ->andWhere('a.website != :emptyString')
+                           ->setParameter('emptyString', '');
                     } else {
-                        $selection->where('website IS NULL OR website = ?', '');
+                        $qb->andWhere('a.website IS NULL OR a.website = :emptyString')
+                           ->setParameter('emptyString', '');
                     }
                     break;
-                    
+                
                 case 'created_after':
                     if ($value instanceof \DateTime) {
-                        $selection->where('created_at >= ?', $value->format('Y-m-d H:i:s'));
+                        $qb->andWhere('a.created_at >= :createdAfter')
+                           ->setParameter('createdAfter', $value);
                     }
                     break;
-                    
+                
                 case 'created_before':
                     if ($value instanceof \DateTime) {
-                        $selection->where('created_at <= ?', $value->format('Y-m-d H:i:s'));
+                        $qb->andWhere('a.created_at <= :createdBefore')
+                           ->setParameter('createdBefore', $value);
                     }
                     break;
-
+                
                 default:
-                    if (property_exists('App\Model\Author', $key)) {
-                        $selection->where($key, $value);
+                    if (property_exists(Author::class, $key)) {
+                        $qb->andWhere("a.$key = :$key")
+                           ->setParameter($key, $value);
                     }
                     break;
             }
         }
         
-        // Count total matching records
-        $count = $selection->count();
-        $pages = (int) ceil($count / $itemsPerPage);
-        
-        // Apply sorting
-        if (property_exists('App\Model\Author', $sortBy)) {
-            $selection->order("$sortBy $sortDir");
+        // Apply ordering
+        if (property_exists(Author::class, $sortBy)) {
+            $qb->orderBy("a.$sortBy", $sortDir);
         } else {
-            $selection->order("name ASC"); // Default sorting
+            $qb->orderBy('a.name', 'ASC');
         }
         
-        // Apply pagination
-        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
-        
-        // Convert to entities
-        $items = [];
-        foreach ($selection as $row) {
-            $items[] = Author::fromArray($row->toArray());
-        }
-        
-        return new PaginatedCollection(
-            new Collection($items),
-            $count,
-            $page,
-            $itemsPerPage,
-            $pages
-        );
+        return $this->paginate($qb, $page, $itemsPerPage);
     }
-
+    
+    // -------------------------------------------------------------------------
+    // STATISTICKÉ METODY
+    // -------------------------------------------------------------------------
+    
     /**
-     * Get author activity statistics
-     * 
-     * @param int $authorId
-     * @return array
+     * Získá statistiky autora a jeho doplňků
      */
     public function getAuthorStatistics(int $authorId): array
     {
-        $author = $this->findById($authorId);
+        $author = $this->find($authorId);
         
         if (!$author) {
             return [];
         }
         
-        // Get addon count
-        $addonCount = $this->database->table('addons')
-            ->where('author_id', $authorId)
-            ->count();
+        $addons = $author->getAddons();
         
-        // Get total downloads
-        $totalDownloads = $this->database->table('addons')
-            ->where('author_id', $authorId)
-            ->sum('downloads_count') ?? 0;
+        // Calculate addon count
+        $addonCount = count($addons);
         
-        // Get average rating
-        $avgRating = $this->database->query("
-            SELECT AVG(ar.rating) as avg_rating
-            FROM addon_reviews ar
-            JOIN addons a ON ar.addon_id = a.id
-            WHERE a.author_id = ?
-        ", $authorId)->fetch();
+        // Calculate total downloads
+        $totalDownloads = 0;
+        $ratings = [];
+        $categoryDistribution = [];
+        $activityTimeline = [];
         
-        // Get category distribution
-        $categoryDistribution = $this->database->query("
-            SELECT c.id, c.name, COUNT(a.id) as addon_count
-            FROM addons a
-            JOIN categories c ON a.category_id = c.id
-            WHERE a.author_id = ?
-            GROUP BY c.id, c.name
-            ORDER BY addon_count DESC
-        ", $authorId)->fetchAll();
-        
-        $categories = [];
-        foreach ($categoryDistribution as $row) {
-            $categories[] = [
-                'category_id' => $row->id,
-                'category_name' => $row->name,
-                'addon_count' => (int)$row->addon_count
-            ];
+        foreach ($addons as $addon) {
+            $totalDownloads += $addon->getDownloadsCount();
+            $ratings[] = $addon->getRating();
+            
+            $categoryId = $addon->getCategory()->getId();
+            $categoryName = $addon->getCategory()->getName();
+            
+            if (!isset($categoryDistribution[$categoryId])) {
+                $categoryDistribution[$categoryId] = [
+                    'category_id' => $categoryId,
+                    'category_name' => $categoryName,
+                    'addon_count' => 0
+                ];
+            }
+            
+            $categoryDistribution[$categoryId]['addon_count']++;
+            
+            // Group addons by month
+            $month = $addon->getCreatedAt()->format('Y-m');
+            if (!isset($activityTimeline[$month])) {
+                $activityTimeline[$month] = [
+                    'month' => $month,
+                    'addon_count' => 0
+                ];
+            }
+            
+            $activityTimeline[$month]['addon_count']++;
         }
         
-        // Get activity timeline
-        $timeline = $this->database->query("
-            SELECT DATE_FORMAT(created_at, '%Y-%m') as month, COUNT(*) as addon_count
-            FROM addons
-            WHERE author_id = ?
-            GROUP BY month
-            ORDER BY month ASC
-        ", $authorId)->fetchAll();
-        
-        $activity = [];
-        foreach ($timeline as $row) {
-            $activity[] = [
-                'month' => $row->month,
-                'addon_count' => (int)$row->addon_count
-            ];
+        // Calculate average rating
+        $avgRating = 0;
+        if (!empty($ratings)) {
+            $avgRating = array_sum($ratings) / count($ratings);
         }
         
         return [
             'author' => $author,
-            'addon_count' => (int)$addonCount,
-            'total_downloads' => (int)$totalDownloads,
-            'average_rating' => $avgRating ? round((float)$avgRating->avg_rating, 2) : 0,
-            'category_distribution' => $categories,
-            'activity_timeline' => $activity
+            'addon_count' => $addonCount,
+            'total_downloads' => $totalDownloads,
+            'average_rating' => round($avgRating, 2),
+            'category_distribution' => array_values($categoryDistribution),
+            'activity_timeline' => array_values($activityTimeline)
         ];
     }
-
+    
     /**
-     * Get author collaboration network
-     * 
-     * @param int $authorId
-     * @param int $depth Maximum depth of connections to explore
-     * @return array
-     */
-    public function getCollaborationNetwork(int $authorId, int $depth = 2): array
-    {
-        $author = $this->findById($authorId);
-        
-        if (!$author) {
-            return [];
-        }
-        
-        $visitedAuthors = [$authorId => true];
-        $queue = [['id' => $authorId, 'depth' => 0]];
-        $network = [
-            'nodes' => [
-                [
-                    'id' => $authorId,
-                    'name' => $author->name,
-                    'level' => 0
-                ]
-            ],
-            'links' => []
-        ];
-        
-        $i = 0;
-        while ($i < count($queue)) {
-            $current = $queue[$i++];
-            $currentId = $current['id'];
-            $currentDepth = $current['depth'];
-            
-            if ($currentDepth >= $depth) {
-                continue;
-            }
-            
-            // Find authors who use similar tags
-            $collaborators = $this->database->query("
-                SELECT DISTINCT a2.author_id, au.name, COUNT(*) as common_tags
-                FROM addons a1
-                JOIN addon_tags at1 ON a1.id = at1.addon_id
-                JOIN addon_tags at2 ON at1.tag_id = at2.tag_id
-                JOIN addons a2 ON at2.addon_id = a2.id
-                JOIN authors au ON a2.author_id = au.id
-                WHERE a1.author_id = ? 
-                AND a2.author_id != ?
-                GROUP BY a2.author_id, au.name
-                HAVING common_tags > 1
-                ORDER BY common_tags DESC
-            ", $currentId, $currentId)->fetchAll();
-            
-            foreach ($collaborators as $collaborator) {
-                $collaboratorId = $collaborator->author_id;
-                
-                // Add link
-                $network['links'][] = [
-                    'source' => $currentId,
-                    'target' => $collaboratorId,
-                    'strength' => (int)$collaborator->common_tags
-                ];
-                
-                // Add node if not already visited
-                if (!isset($visitedAuthors[$collaboratorId])) {
-                    $visitedAuthors[$collaboratorId] = true;
-                    
-                    $network['nodes'][] = [
-                        'id' => $collaboratorId,
-                        'name' => $collaborator->name,
-                        'level' => $currentDepth + 1
-                    ];
-                    
-                    $queue[] = [
-                        'id' => $collaboratorId,
-                        'depth' => $currentDepth + 1
-                    ];
-                }
-            }
-        }
-        
-        return $network;
-    }
-
-    /**
-     * Get top authors by various metrics
-     * 
-     * @param string $metric 'addons', 'downloads', or 'rating'
-     * @param int $limit Maximum number of authors to return
-     * @return array
+     * Vrátí autory seřazené podle zvoleného kritéria
      */
     public function getTopAuthors(string $metric = 'addons', int $limit = 10): array
     {
-        $query = "";
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('a');
         
         switch ($metric) {
-            case 'addons':
-                $query = "
-                    SELECT au.id, au.name, COUNT(a.id) as addon_count
-                    FROM authors au
-                    JOIN addons a ON au.id = a.author_id
-                    GROUP BY au.id, au.name
-                    ORDER BY addon_count DESC
-                    LIMIT ?
-                ";
+            case 'downloads':
+                $qb->addSelect('SUM(addon.downloads_count) as metricValue')
+                   ->from(Author::class, 'a')
+                   ->join('a.addons', 'addon')
+                   ->groupBy('a.id')
+                   ->orderBy('metricValue', 'DESC');
                 break;
-                
-                case 'downloads':
-                    $query = "
-                        SELECT au.id, au.name, COUNT(a.id) as addon_count, SUM(a.downloads_count) as total_downloads
-                        FROM authors au
-                        JOIN addons a ON au.id = a.author_id
-                        GROUP BY au.id, au.name
-                        ORDER BY total_downloads DESC
-                        LIMIT ?
-                    ";
-                    break;
                 
             case 'rating':
-                $query = "
-                    SELECT au.id, au.name, AVG(a.rating) as avg_rating
-                    FROM authors au
-                    JOIN addons a ON au.id = a.author_id
-                    WHERE a.rating > 0
-                    GROUP BY au.id, au.name
-                    ORDER BY avg_rating DESC
-                    LIMIT ?
-                ";
+                $qb->addSelect('AVG(addon.rating) as metricValue')
+                   ->from(Author::class, 'a')
+                   ->join('a.addons', 'addon')
+                   ->groupBy('a.id')
+                   ->orderBy('metricValue', 'DESC');
                 break;
                 
+            case 'addons':
             default:
-                $query = "
-                    SELECT au.id, au.name, COUNT(a.id) as addon_count
-                    FROM authors au
-                    JOIN addons a ON au.id = a.author_id
-                    GROUP BY au.id, au.name
-                    ORDER BY addon_count DESC
-                    LIMIT ?
-                ";
+                $qb->addSelect('COUNT(addon.id) as metricValue')
+                   ->from(Author::class, 'a')
+                   ->join('a.addons', 'addon')
+                   ->groupBy('a.id')
+                   ->orderBy('metricValue', 'DESC');
+                break;
         }
         
-        $result = $this->database->query($query, $limit);
+        $qb->setMaxResults($limit);
+        $result = $qb->getQuery()->getResult();
         
         $authors = [];
         foreach ($result as $row) {
-            $author = Author::fromArray([
-                'id' => $row->id,
-                'name' => $row->name,
-                'email' => null,
-                'website' => null,
-                'created_at' => new \DateTime()
-            ]);
+            $author = $row[0];
+            $value = $row['metricValue'];
             
             $data = [
                 'author' => $author
             ];
             
-            if (isset($row->addon_count)) {
-                $data['addon_count'] = (int)$row->addon_count;
-            }
-            
-            if (isset($row->total_downloads)) {
-                $data['total_downloads'] = (int)$row->total_downloads;
-            }
-            
-            if (isset($row->avg_rating)) {
-                $data['average_rating'] = round((float)$row->avg_rating, 2);
+            switch ($metric) {
+                case 'downloads':
+                    $data['total_downloads'] = (int)$value;
+                    break;
+                    
+                case 'rating':
+                    $data['average_rating'] = round((float)$value, 2);
+                    break;
+                    
+                case 'addons':
+                default:
+                    $data['addon_count'] = (int)$value;
+                    break;
             }
             
             $authors[] = $data;
         }
         
         return $authors;
+    }
+    
+    // -------------------------------------------------------------------------
+    // METODY PRO SÍŤOVOU ANALÝZU
+    // -------------------------------------------------------------------------
+    
+    /**
+     * Vytvoří síť autorů spolupracujících prostřednictvím podobných tagů
+     */
+    public function getCollaborationNetwork(int $authorId, int $depth = 2): array
+    {
+        $author = $this->find($authorId);
+        
+        if (!$author) {
+            return [];
+        }
+        
+        // Initialize network with the author
+        $visitedAuthors = [$authorId => true];
+        $network = [
+            'nodes' => [
+                [
+                    'id' => $authorId,
+                    'name' => $author->getName(),
+                    'level' => 0
+                ]
+            ],
+            'links' => []
+        ];
+        
+        // Find authors who use similar tags
+        $this->buildCollaborationNetwork($author, $visitedAuthors, $network, 0, $depth);
+        
+        return $network;
+    }
+    
+    /**
+     * Pomocná metoda pro rekurzivní vytváření sítě spolupracujících autorů
+     */
+    private function buildCollaborationNetwork(Author $author, array &$visitedAuthors, array &$network, int $level, int $maxDepth): void
+    {
+        if ($level >= $maxDepth) {
+            return;
+        }
+        
+        // Get all tags used by this author's addons
+        $authorTags = [];
+        foreach ($author->getAddons() as $addon) {
+            foreach ($addon->getTags() as $tag) {
+                $authorTags[] = $tag->getId();
+            }
+        }
+        
+        // Skip if author has no tags
+        if (empty($authorTags)) {
+            return;
+        }
+        
+        // Find other authors who use the same tags
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('a', 'COUNT(DISTINCT t.id) as tagCount')
+           ->from(Author::class, 'a')
+           ->join('a.addons', 'addon')
+           ->join('addon.tags', 't')
+           ->where('t.id IN (:tags)')
+           ->andWhere('a.id != :authorId')
+           ->setParameter('tags', array_unique($authorTags))
+           ->setParameter('authorId', $author->getId())
+           ->groupBy('a.id')
+           ->having('tagCount > 1')
+           ->orderBy('tagCount', 'DESC');
+        
+        $result = $qb->getQuery()->getResult();
+        
+        foreach ($result as $row) {
+            $collaborator = $row[0];
+            $tagCount = $row['tagCount'];
+            $collaboratorId = $collaborator->getId();
+            
+            // Add link
+            $network['links'][] = [
+                'source' => $author->getId(),
+                'target' => $collaboratorId,
+                'strength' => (int)$tagCount
+            ];
+            
+            // Add node if not already visited
+            if (!isset($visitedAuthors[$collaboratorId])) {
+                $visitedAuthors[$collaboratorId] = true;
+                
+                $network['nodes'][] = [
+                    'id' => $collaboratorId,
+                    'name' => $collaborator->getName(),
+                    'level' => $level + 1
+                ];
+                
+                // Recursively build the network
+                $this->buildCollaborationNetwork($collaborator, $visitedAuthors, $network, $level + 1, $maxDepth);
+            }
+        }
     }
 }

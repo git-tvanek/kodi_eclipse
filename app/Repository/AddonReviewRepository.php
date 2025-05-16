@@ -22,7 +22,7 @@ use Psr\Cache\CacheItemPoolInterface;
  * 
  * @extends BaseDoctrineRepository<AddonReview>
  */
-class AddonReviewRepository extends BaseDoctrineRepository implements IReviewRepository
+class AddonReviewRepository extends BaseRepository implements IReviewRepository
 {
     private ?CacheItemPoolInterface $cache;
 

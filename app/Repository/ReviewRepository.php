@@ -2,115 +2,86 @@
 
 declare(strict_types=1);
 
-namespace App\Repository;
+namespace App\Repository\Doctrine;
 
-use App\Model\AddonReview;
+use App\Entity\AddonReview;
+use App\Entity\Addon;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IReviewRepository;
-use App\Repository\Interface\IAddonRepository;
-use Nette\Database\Explorer;
-use Nette\Database\Connection;
-use Nette\Database\Structure;
-use Nette\Caching\Storage;
-use Nette\Database\Conventions\DiscoveredConventions;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
+
 /**
- * @extends BaseRepository<AddonReview>
- * @implements ReviewRepositoryInterface
+ * @extends BaseDoctrineRepository<AddonReview>
  */
 class ReviewRepository extends BaseRepository implements IReviewRepository
 {
-    /** @var IAddonRepository */
-    private IAddonRepository $addonRepository;
-
-    public function __construct(Connection $connection, IAddonRepository $addonRepository, Storage $cacheStorage)
+    public function __construct(EntityManagerInterface $entityManager)
     {
-        // Vytvoření Explorer instance z Connection
-        $structure = new Structure($connection, $cacheStorage);
-        $conventions = new DiscoveredConventions($structure);
-        $explorer = new Explorer($connection, $structure, $conventions, $cacheStorage);
-        
-        parent::__construct($explorer);
-        $this->tableName = 'addon_reviews';
-        $this->entityClass = AddonReview::class;
-        $this->addonRepository = $addonRepository;
+        parent::__construct($entityManager, AddonReview::class);
     }
-
-    /**
-     * Create a new review
-     * 
-     * @param AddonReview $review
-     * @return int
-     */
+    
+    protected function createCollection(array $entities): Collection
+    {
+        return new Collection($entities);
+    }
+    
     public function create(AddonReview $review): int
     {
-        // Set timestamp
-        $review->created_at = new \DateTime();
-        
-        // Insert the review
-        $reviewId = $this->save($review);
+        $this->entityManager->persist($review);
+        $this->entityManager->flush();
         
         // Update addon rating
-        $this->addonRepository->updateRating($review->addon_id);
+        $addon = $review->getAddon();
+        $this->updateAddonRating($addon);
         
-        return $reviewId;
+        return $review->getId();
     }
-
-    /**
-     * Delete a review
-     * 
-     * @param int $id
-     * @return int
-     */
+    
     public function delete(int $id): int
     {
-        // Get the addon ID first
-        $review = $this->findById($id);
-        $addonId = $review ? $review->addon_id : null;
+        $review = $this->find($id);
+        if (!$review) {
+            return 0;
+        }
         
-        // Delete the review
-        $result = parent::delete($id);
+        $addon = $review->getAddon();
+        
+        $this->entityManager->remove($review);
+        $this->entityManager->flush();
         
         // Update addon rating
-        if ($addonId) {
-            $this->addonRepository->updateRating($addonId);
-        }
+        $this->updateAddonRating($addon);
         
-        return $result;
+        return 1;
     }
-
-    /**
-     * Find reviews by addon
-     * 
-     * @param int $addonId
-     * @return Collection<AddonReview>
-     */
+    
+    private function updateAddonRating(Addon $addon): void
+    {
+        $qb = $this->entityManager->createQueryBuilder();
+        $avgRating = $qb->select('AVG(r.rating)')
+            ->from(AddonReview::class, 'r')
+            ->where('r.addon = :addon')
+            ->setParameter('addon', $addon)
+            ->getQuery()
+            ->getSingleScalarResult();
+        
+        $addon->setRating($avgRating ?: 0);
+        $this->entityManager->flush();
+    }
+    
     public function findByAddon(int $addonId): Collection
     {
-        $rows = $this->findBy(['addon_id' => $addonId])
-            ->order('created_at DESC');
-        
-        $reviews = [];
-        foreach ($rows as $row) {
-            $reviews[] = AddonReview::fromArray($row->toArray());
-        }
+        $addon = $this->entityManager->getReference(Addon::class, $addonId);
+        $reviews = $this->findBy(['addon' => $addon], ['created_at' => 'DESC']);
         
         return new Collection($reviews);
     }
-
-    /**
-     * Find reviews with advanced filtering
-     * 
-     * @param array $filters Filtering criteria
-     * @param string $sortBy Field to sort by
-     * @param string $sortDir Sort direction (ASC or DESC)
-     * @param int $page Page number
-     * @param int $itemsPerPage Items per page
-     * @return PaginatedCollection<AddonReview>
-     */
+    
     public function findWithFilters(array $filters = [], string $sortBy = 'created_at', string $sortDir = 'DESC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $selection = $this->getTable();
+        $qb = $this->createQueryBuilder('r');
         
         // Apply filters
         foreach ($filters as $key => $value) {
@@ -120,100 +91,85 @@ class ReviewRepository extends BaseRepository implements IReviewRepository
             
             switch ($key) {
                 case 'addon_id':
-                    $selection->where('addon_id', $value);
+                    $qb->andWhere('r.addon = :addon')
+                       ->setParameter('addon', $this->entityManager->getReference(Addon::class, $value));
                     break;
-                    
+                
                 case 'user_id':
-                    $selection->where('user_id', $value);
+                    $qb->andWhere('r.user = :user')
+                       ->setParameter('user', $this->entityManager->getReference('App\Entity\User', $value));
                     break;
-                    
+                
                 case 'email':
-                    $selection->where("email LIKE ?", "%{$value}%");
+                    $qb->andWhere('r.email LIKE :email')
+                       ->setParameter('email', '%' . $value . '%');
                     break;
-                    
+                
                 case 'name':
-                    $selection->where("name LIKE ?", "%{$value}%");
+                    $qb->andWhere('r.name LIKE :name')
+                       ->setParameter('name', '%' . $value . '%');
                     break;
-                    
+                
                 case 'min_rating':
-                    $selection->where('rating >= ?', $value);
+                    $qb->andWhere('r.rating >= :minRating')
+                       ->setParameter('minRating', $value);
                     break;
-                    
+                
                 case 'max_rating':
-                    $selection->where('rating <= ?', $value);
+                    $qb->andWhere('r.rating <= :maxRating')
+                       ->setParameter('maxRating', $value);
                     break;
-                    
+                
                 case 'has_comment':
                     if ($value) {
-                        $selection->where('comment IS NOT NULL AND comment != ?', '');
+                        $qb->andWhere('r.comment IS NOT NULL')
+                           ->andWhere('r.comment != :emptyString')
+                           ->setParameter('emptyString', '');
                     } else {
-                        $selection->where('comment IS NULL OR comment = ?', '');
+                        $qb->andWhere('r.comment IS NULL OR r.comment = :emptyString')
+                           ->setParameter('emptyString', '');
                     }
                     break;
-                    
+                
                 case 'created_after':
                     if ($value instanceof \DateTime) {
-                        $selection->where('created_at >= ?', $value->format('Y-m-d H:i:s'));
+                        $qb->andWhere('r.created_at >= :createdAfter')
+                           ->setParameter('createdAfter', $value);
                     }
                     break;
-                    
+                
                 case 'created_before':
                     if ($value instanceof \DateTime) {
-                        $selection->where('created_at <= ?', $value->format('Y-m-d H:i:s'));
+                        $qb->andWhere('r.created_at <= :createdBefore')
+                           ->setParameter('createdBefore', $value);
                     }
                     break;
-                    
+                
                 default:
-                    if (property_exists('App\Model\AddonReview', $key)) {
-                        $selection->where($key, $value);
+                    if (property_exists(AddonReview::class, $key)) {
+                        $qb->andWhere("r.$key = :$key")
+                           ->setParameter($key, $value);
                     }
                     break;
             }
         }
         
-        // Count total matching records
-        $count = $selection->count();
-        $pages = (int) ceil($count / $itemsPerPage);
-        
-        // Apply sorting
-        if (property_exists('App\Model\AddonReview', $sortBy)) {
-            $selection->order("$sortBy $sortDir");
+        // Apply ordering
+        if (property_exists(AddonReview::class, $sortBy)) {
+            $qb->orderBy("r.$sortBy", $sortDir);
         } else {
-            $selection->order("created_at DESC"); // Default sorting
+            $qb->orderBy('r.created_at', 'DESC');
         }
         
-        // Apply pagination
-        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
-        
-        // Convert to entities
-        $items = [];
-        foreach ($selection as $row) {
-            $items[] = AddonReview::fromArray($row->toArray());
-        }
-        
-        // Create collection and paginated collection
-        $collection = new Collection($items);
-        
-        return new PaginatedCollection(
-            $collection,
-            $count,
-            $page,
-            $itemsPerPage,
-            $pages
-        );
+        return $this->paginate($qb, $page, $itemsPerPage);
     }
-
-    /**
-     * Get sentiment analysis of reviews
-     * 
-     * @param int $addonId
-     * @return array
-     */
+    
     public function getSentimentAnalysis(int $addonId): array
     {
-        $reviews = $this->findByAddon($addonId);
+        $addon = $this->entityManager->getReference(Addon::class, $addonId);
+        $reviews = $this->findBy(['addon' => $addon]);
         
-        if ($reviews->count() === 0) {
+        if (empty($reviews)) {
             return [
                 'positive' => 0,
                 'neutral' => 0,
@@ -227,16 +183,16 @@ class ReviewRepository extends BaseRepository implements IReviewRepository
         $negative = 0;
         
         foreach ($reviews as $review) {
-            if ($review->rating >= 4) {
+            if ($review->getRating() >= 4) {
                 $positive++;
-            } elseif ($review->rating <= 2) {
+            } elseif ($review->getRating() <= 2) {
                 $negative++;
             } else {
                 $neutral++;
             }
         }
         
-        $total = $reviews->count();
+        $total = count($reviews);
         $sentimentScore = ($positive - $negative) / $total;
         
         return [
@@ -246,150 +202,136 @@ class ReviewRepository extends BaseRepository implements IReviewRepository
             'sentiment_score' => round($sentimentScore, 2)
         ];
     }
-
-    /**
-     * Get review activity over time
-     * 
-     * @param int $addonId
-     * @param string $interval 'day', 'week', 'month', or 'year'
-     * @param int $limit Number of periods to return
-     * @return array
-     */
+    
     public function getReviewActivityOverTime(int $addonId, string $interval = 'month', int $limit = 12): array
     {
+        $addon = $this->entityManager->getReference(Addon::class, $addonId);
+        
+        // Define date format based on interval
+        $dateFormat = 'Y-m';
+        switch ($interval) {
+            case 'day':
+                $dateFormat = 'Y-m-d';
+                break;
+            case 'week':
+                $dateFormat = 'Y-W';
+                break;
+            case 'month':
+                $dateFormat = 'Y-m';
+                break;
+            case 'year':
+                $dateFormat = 'Y';
+                break;
+        }
+        
+        // Find all reviews for this addon
+        $reviews = $this->findBy(['addon' => $addon], ['created_at' => 'DESC']);
+        
+        // Group reviews by period
+        $periods = [];
         $now = new \DateTime();
         $currentDate = clone $now;
         
-        // Define SQL date format based on interval
-        switch ($interval) {
-            case 'day':
-                $sqlFormat = '%Y-%m-%d';
-                $dateFormat = 'Y-m-d';
-                $dateInterval = 'P1D';
-                break;
-            case 'week':
-                $sqlFormat = '%Y-%u'; // Year and week number
-                $dateFormat = 'Y-W';
-                $dateInterval = 'P1W';
-                break;
-            case 'month':
-                $sqlFormat = '%Y-%m';
-                $dateFormat = 'Y-m';
-                $dateInterval = 'P1M';
-                break;
-            case 'year':
-                $sqlFormat = '%Y';
-                $dateFormat = 'Y';
-                $dateInterval = 'P1Y';
-                break;
-            default:
-                $sqlFormat = '%Y-%m';
-                $dateFormat = 'Y-m';
-                $dateInterval = 'P1M';
-        }
-        
-        // Generate time periods
-        $periods = [];
+        // Generate time periods for the last $limit intervals
         for ($i = 0; $i < $limit; $i++) {
-            $periods[] = $currentDate->format($dateFormat);
-            $currentDate->sub(new \DateInterval($dateInterval));
+            $period = $currentDate->format($dateFormat);
+            $periods[$period] = [
+                'period' => $period,
+                'review_count' => 0,
+                'average_rating' => 0,
+                'ratings' => []
+            ];
+            
+            // Adjust the date based on interval
+            switch ($interval) {
+                case 'day':
+                    $currentDate->modify('-1 day');
+                    break;
+                case 'week':
+                    $currentDate->modify('-1 week');
+                    break;
+                case 'month':
+                    $currentDate->modify('-1 month');
+                    break;
+                case 'year':
+                    $currentDate->modify('-1 year');
+                    break;
+            }
         }
         
         // Sort periods chronologically
-        $periods = array_reverse($periods);
+        ksort($periods);
         
-        // Initialize result structure
-        $result = [];
-        foreach ($periods as $period) {
-            $result[$period] = [
-                'period' => $period,
-                'review_count' => 0,
-                'average_rating' => 0
-            ];
-        }
-        
-        // Query the database for review counts and average ratings
-        $startDate = clone $currentDate;
-        
-        $query = $this->database->query("
-            SELECT DATE_FORMAT(created_at, '$sqlFormat') AS period, 
-                   COUNT(*) AS review_count,
-                   AVG(rating) AS avg_rating
-            FROM {$this->tableName}
-            WHERE addon_id = ? AND created_at >= ?
-            GROUP BY period
-            ORDER BY period
-        ", $addonId, $startDate->format('Y-m-d H:i:s'));
-        
-        foreach ($query as $row) {
-            if (isset($result[$row->period])) {
-                $result[$row->period]['review_count'] = (int)$row->review_count;
-                $result[$row->period]['average_rating'] = round((float)$row->avg_rating, 2);
+        // Assign reviews to periods
+        foreach ($reviews as $review) {
+            $period = $review->getCreatedAt()->format($dateFormat);
+            
+            if (isset($periods[$period])) {
+                $periods[$period]['review_count']++;
+                $periods[$period]['ratings'][] = $review->getRating();
             }
         }
         
-        return array_values($result);
+        // Calculate average ratings
+        foreach ($periods as &$period) {
+            if (!empty($period['ratings'])) {
+                $period['average_rating'] = round(array_sum($period['ratings']) / count($period['ratings']), 2);
+            }
+            unset($period['ratings']);
+        }
+        
+        return array_values($periods);
     }
-
-    /**
-     * Get most recent reviews
-     * 
-     * @param int $limit
-     * @return array
-     */
+    
     public function getMostRecentReviews(int $limit = 10): array
     {
-        $rows = $this->findAll()
-            ->order('created_at DESC')
-            ->limit($limit);
+        $qb = $this->createQueryBuilder('r')
+            ->join('r.addon', 'a')
+            ->orderBy('r.created_at', 'DESC')
+            ->setMaxResults($limit);
+        
+        $reviews = $qb->getQuery()->getResult();
+        
+        $result = [];
+        foreach ($reviews as $review) {
+            $addon = $review->getAddon();
             
-        $reviews = [];
-        foreach ($rows as $row) {
-            $review = AddonReview::fromArray($row->toArray());
-            
-            // Get addon name
-            $addon = $this->database->table('addons')
-                ->get($review->addon_id);
-                
-            $reviews[] = [
+            $result[] = [
                 'review' => $review,
-                'addon_name' => $addon ? $addon->name : 'Unknown Addon',
-                'addon_slug' => $addon ? $addon->slug : null
+                'addon_name' => $addon->getName(),
+                'addon_slug' => $addon->getSlug()
             ];
         }
         
-        return $reviews;
+        return $result;
     }
-
-    /**
-     * Get reviews by rating
-     * 
-     * @param int $rating
-     * @param int $page
-     * @param int $itemsPerPage
-     * @return PaginatedCollection<AddonReview>
-     */
+    
     public function getReviewsByRating(int $rating, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        return $this->findWithFilters(['rating' => $rating], 'created_at', 'DESC', $page, $itemsPerPage);
+        $qb = $this->createQueryBuilder('r')
+            ->where('r.rating = :rating')
+            ->setParameter('rating', $rating)
+            ->orderBy('r.created_at', 'DESC');
+        
+        return $this->paginate($qb, $page, $itemsPerPage);
     }
-
-    /**
-     * Find common keywords in reviews (basic text analysis)
-     * 
-     * @param int $addonId
-     * @param int $limit
-     * @return array
-     */
+    
     public function findCommonKeywords(int $addonId, int $limit = 10): array
     {
-        $reviews = $this->findByAddon($addonId);
+        $addon = $this->entityManager->getReference(Addon::class, $addonId);
+        $reviews = $this->findBy(['addon' => $addon]);
         
+        // Extract comments
         $commentTexts = [];
         foreach ($reviews as $review) {
-            if (!empty($review->comment)) {
-                $commentTexts[] = $review->comment;
+            if ($review->getComment()) {
+                $commentTexts[] = $review->getComment();
             }
+        }
+        
+        // If no comments, return empty array
+        if (empty($commentTexts)) {
+            return [];
         }
         
         // Combine all comments
@@ -413,10 +355,9 @@ class ReviewRepository extends BaseRepository implements IReviewRepository
             unset($wordFrequencies[$stopWord]);
         }
         
-        // Sort by frequency
+        // Sort by frequency and limit
         arsort($wordFrequencies);
         
-        // Return the most common words
         return array_slice($wordFrequencies, 0, $limit, true);
     }
 }

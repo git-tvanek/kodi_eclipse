@@ -2,292 +2,210 @@
 
 declare(strict_types=1);
 
-namespace App\Repository;
+namespace App\Repository\Doctrine;
 
-use App\Model\Category;
+use App\Entity\Category;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 use App\Repository\Interface\ICategoryRepository;
-use Nette\Database\Explorer;
-use Nette\Utils\Strings;
+use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * @extends BaseRepository<Category>
- * @implements CategoryRepositoryInterface
+ * @extends BaseDoctrineRepository<Category>
  */
-class CategoryRepository extends BaseRepository implements ICategoryRepository
+class CategoryRepository extends BaseDoctrineRepository implements ICategoryRepository
 {
-    public function __construct(Explorer $database)
+    public function __construct(EntityManagerInterface $entityManager)
     {
-        parent::__construct($database);
-        $this->tableName = 'categories';
-        $this->entityClass = Category::class;
+        parent::__construct($entityManager, Category::class);
     }
-
-    /**
-     * Find category by slug
-     * 
-     * @param string $slug
-     * @return Category|null
-     */
+    
+    protected function createCollection(array $entities): Collection
+    {
+        return new Collection($entities);
+    }
+    
     public function findBySlug(string $slug): ?Category
     {
-        /** @var Category|null */
         return $this->findOneBy(['slug' => $slug]);
     }
-
-    /**
-     * Get root categories
-     * 
-     * @return Collection<Category>
-     */
+    
     public function findRootCategories(): Collection
     {
-        $rows = $this->findBy(['parent_id' => null]);
-        $categories = [];
-        
-        foreach ($rows as $row) {
-            $categories[] = Category::fromArray($row->toArray());
-        }
-        
+        $categories = $this->findBy(['parent' => null]);
         return new Collection($categories);
     }
-
-    /**
-     * Get subcategories of a category
-     * 
-     * @param int $parentId
-     * @return Collection<Category>
-     */
+    
     public function findSubcategories(int $parentId): Collection
     {
-        $rows = $this->findBy(['parent_id' => $parentId]);
-        $categories = [];
-        
-        foreach ($rows as $row) {
-            $categories[] = Category::fromArray($row->toArray());
+        $parent = $this->find($parentId);
+        if (!$parent) {
+            return new Collection([]);
         }
         
+        $categories = $this->findBy(['parent' => $parent]);
         return new Collection($categories);
     }
-
-    /**
-     * Get all subcategories recursively
-     * 
-     * @param int $categoryId
-     * @return Collection<Category>
-     */
+    
     public function findAllSubcategoriesRecursive(int $categoryId): Collection
     {
         $result = [];
-        $directSubcategories = $this->findSubcategories($categoryId);
-        
-        foreach ($directSubcategories as $subcategory) {
-            $result[] = $subcategory;
-            $childSubcategories = $this->findAllSubcategoriesRecursive($subcategory->id);
-            foreach ($childSubcategories as $childSubcategory) {
-                $result[] = $childSubcategory;
-            }
-        }
-        
+        $this->findSubcategoriesRecursive($categoryId, $result);
         return new Collection($result);
     }
-
-    /**
-     * Get complete path to category (from root to the category)
-     * 
-     * @param int $categoryId
-     * @return Collection<Category>
-     */
+    
+    private function findSubcategoriesRecursive(int $parentId, array &$result): void
+    {
+        $subcategories = $this->findSubcategories($parentId);
+        
+        foreach ($subcategories as $subcategory) {
+            $result[] = $subcategory;
+            $this->findSubcategoriesRecursive($subcategory->getId(), $result);
+        }
+    }
+    
     public function getCategoryPath(int $categoryId): Collection
     {
         $path = [];
-        $currentCategory = $this->findById($categoryId);
+        $category = $this->find($categoryId);
         
-        if (!$currentCategory) {
-            return new Collection();
-        }
-        
-        $path[] = $currentCategory;
-        
-        while ($currentCategory && $currentCategory->parent_id !== null) {
-            $parentCategory = $this->findById($currentCategory->parent_id);
-            if ($parentCategory) {
-                array_unshift($path, $parentCategory);
-                $currentCategory = $parentCategory;
-            } else {
-                break;
-            }
+        while ($category) {
+            array_unshift($path, $category);
+            $category = $category->getParent();
         }
         
         return new Collection($path);
     }
-
-    /**
-     * Get category hierarchy
-     * 
-     * @return array
-     */
+    
     public function getHierarchy(): array
     {
-        $categoryRows = $this->findAll()->fetchAll();
-        $categories = [];
+        // Get all categories
+        $categories = $this->findAll();
         
-        foreach ($categoryRows as $row) {
-            $categories[] = Category::fromArray($row->toArray());
-        }
-        
+        // Create hierarchy
         $hierarchy = [];
+        $categoriesById = [];
         
-        // First get all root categories
+        // First pass: index categories by ID
         foreach ($categories as $category) {
-            if ($category->parent_id === null) {
-                $hierarchyItem = $category->toArray();
-                $hierarchyItem['subcategories'] = [];
-                $hierarchy[$category->id] = $hierarchyItem;
+            $categoryData = [
+                'id' => $category->getId(),
+                'name' => $category->getName(),
+                'slug' => $category->getSlug(),
+                'parent_id' => $category->getParent() ? $category->getParent()->getId() : null,
+                'subcategories' => []
+            ];
+            
+            $categoriesById[$category->getId()] = $categoryData;
+        }
+        
+        // Second pass: build the tree
+        foreach ($categoriesById as $id => $categoryData) {
+            if ($categoryData['parent_id'] === null) {
+                // This is a root category
+                $hierarchy[] = $categoryData;
+            } else {
+                // This is a child category
+                $parentId = $categoryData['parent_id'];
+                if (isset($categoriesById[$parentId])) {
+                    $categoriesById[$parentId]['subcategories'][] = $categoryData;
+                }
             }
         }
         
-        // Then assign subcategories
-        foreach ($categories as $category) {
-            if ($category->parent_id !== null && isset($hierarchy[$category->parent_id])) {
-                $hierarchy[$category->parent_id]['subcategories'][] = $category->toArray();
-            }
-        }
-        
-        return array_values($hierarchy);
+        return $hierarchy;
     }
-
-    /**
-     * Create a new category
-     * 
-     * @param Category $category
-     * @return int
-     */
+    
     public function create(Category $category): int
     {
-        // Generate slug if not provided
-        if (empty($category->slug)) {
-            $category->slug = Strings::webalize($category->name);
-        }
+        $this->entityManager->persist($category);
+        $this->entityManager->flush();
         
-        return $this->save($category);
+        return $category->getId();
     }
-
-    /**
-     * Update a category
-     * 
-     * @param Category $category
-     * @return int
-     */
+    
     public function update(Category $category): int
     {
-        // Update slug if name changed and slug is empty
-        if (empty($category->slug)) {
-            $category->slug = Strings::webalize($category->name);
-        }
+        $this->entityManager->persist($category);
+        $this->entityManager->flush();
         
-        return $this->save($category);
+        return $category->getId();
     }
-
-    /**
-     * Get most popular categories based on addon downloads
-     * 
-     * @param int $limit
-     * @return array
-     */
+    
     public function getMostPopularCategories(int $limit = 10): array
     {
-        $result = $this->database->query("
-            SELECT c.id, c.name, c.slug, COUNT(a.id) as addon_count, SUM(a.downloads_count) as total_downloads
-            FROM {$this->tableName} c
-            JOIN addons a ON c.id = a.category_id
-            GROUP BY c.id, c.name, c.slug
-            ORDER BY total_downloads DESC
-            LIMIT ?
-        ", $limit);
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('c', 'COUNT(a.id) as addonCount', 'SUM(a.downloads_count) as totalDownloads')
+           ->from(Category::class, 'c')
+           ->join('c.addons', 'a')
+           ->groupBy('c.id')
+           ->orderBy('totalDownloads', 'DESC')
+           ->setMaxResults($limit);
+        
+        $result = $qb->getQuery()->getResult();
         
         $categories = [];
-        
         foreach ($result as $row) {
-            $category = Category::fromArray([
-                'id' => $row->id,
-                'name' => $row->name,
-                'slug' => $row->slug,
-                'parent_id' => null // We don't need this for the result
-            ]);
+            $category = $row[0];
+            $addonCount = $row['addonCount'];
+            $totalDownloads = $row['totalDownloads'];
             
             $categories[] = [
                 'category' => $category,
-                'addon_count' => (int)$row->addon_count,
-                'total_downloads' => (int)$row->total_downloads
+                'addon_count' => (int)$addonCount,
+                'total_downloads' => (int)$totalDownloads
             ];
         }
         
         return $categories;
     }
-
-    /**
-     * Get the full hierarchy of categories with statistics
-     * 
-     * @return array
-     */
+    
     public function getHierarchyWithStats(): array
     {
         // Get all categories
-        $categories = $this->findAll()->fetchAll();
+        $categories = $this->findAll();
         
-        // Get addon counts for all categories
-        $addonCounts = $this->database->query("
-            SELECT category_id, COUNT(*) as addon_count
-            FROM addons
-            GROUP BY category_id
-        ")->fetchPairs('category_id', 'addon_count');
-        
-        // Build hierarchy with counts
+        // Create hierarchy with statistics
         $hierarchy = [];
         $categoriesById = [];
         
-        // First pass: create category objects with addon counts
-        foreach ($categories as $row) {
-            $category = Category::fromArray($row->toArray());
+        // First pass: index categories by ID and count addons
+        foreach ($categories as $category) {
+            $addonCount = count($category->getAddons());
+            
             $categoryData = [
                 'category' => $category,
-                'addon_count' => $addonCounts[$category->id] ?? 0,
-                'total_addon_count' => $addonCounts[$category->id] ?? 0, // Will be updated in second pass
+                'addon_count' => $addonCount,
+                'total_addon_count' => $addonCount, // Will be updated in third pass
                 'subcategories' => []
             ];
             
-            $categoriesById[$category->id] = $categoryData;
+            $categoriesById[$category->getId()] = $categoryData;
         }
         
         // Second pass: build the tree
         foreach ($categoriesById as $id => $categoryData) {
             $category = $categoryData['category'];
+            $parent = $category->getParent();
             
-            if ($category->parent_id === null) {
+            if (!$parent) {
                 // This is a root category
                 $hierarchy[] = &$categoriesById[$id];
             } else {
                 // This is a child category
-                if (isset($categoriesById[$category->parent_id])) {
-                    $categoriesById[$category->parent_id]['subcategories'][] = &$categoriesById[$id];
+                $parentId = $parent->getId();
+                if (isset($categoriesById[$parentId])) {
+                    $categoriesById[$parentId]['subcategories'][] = &$categoriesById[$id];
                 }
             }
         }
         
-        // Third pass: update total counts (including subcategories)
+        // Third pass: update total counts
         $this->updateTotalCounts($hierarchy);
         
         return $hierarchy;
     }
-
-    /**
-     * Helper method to recursively update total addon counts
-     * 
-     * @param array &$categories
-     * @return int
-     */
+    
     private function updateTotalCounts(array &$categories): int
     {
         $total = 0;

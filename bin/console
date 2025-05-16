@@ -1,0 +1,23 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use App\Bootstrap;
+use Contributte\Console\Application;
+use Symfony\Component\Console\Input\ArgvInput;
+
+// Spuštění bootstrapu aplikace
+$configurator = new Bootstrap();
+$container = $configurator->bootWebApplication();
+
+// Získání instance konzolové aplikace z DI kontejneru
+$application = $container->getByType(Application::class);
+
+// Definice proměnné prostředí pro konzolový režim
+$_SERVER['consoleMode'] = true;
+
+// Spuštění konzole
+exit($application->run(new ArgvInput()));

@@ -2,105 +2,67 @@
 
 declare(strict_types=1);
 
-namespace App\Repository;
+namespace App\Repository\Doctrine;
 
-use App\Model\Permission;
+use App\Entity\Permission;
+use App\Entity\Role;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IPermissionRepository;
-use Nette\Database\Explorer;
-use Nette\Database\Table\Selection;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 
 /**
- * @extends BaseRepository<Permission>
- * @implements IPermissionRepository
+ * @extends BaseDoctrineRepository<Permission>
  */
-class PermissionRepository extends BaseRepository implements IPermissionRepository
+class PermissionRepository extends BaseDoctrineRepository implements IPermissionRepository
 {
-    public function __construct(Explorer $database)
+    public function __construct(EntityManagerInterface $entityManager)
     {
-        parent::__construct($database);
-        $this->tableName = 'permissions';
-        $this->entityClass = Permission::class;
+        parent::__construct($entityManager, Permission::class);
     }
-
-    /**
-     * Najde oprávnění podle zdroje a akce
-     * 
-     * @param string $resource
-     * @param string $action
-     * @return Permission|null
-     */
+    
+    protected function createCollection(array $entities): Collection
+    {
+        return new Collection($entities);
+    }
+    
     public function findByResourceAndAction(string $resource, string $action): ?Permission
     {
-        /** @var Permission|null */
         return $this->findOneBy([
             'resource' => $resource,
             'action' => $action
         ]);
     }
     
-    /**
-     * Najde oprávnění podle role
-     * 
-     * @param int $roleId
-     * @return Collection<Permission>
-     */
     public function findByRole(int $roleId): Collection
     {
-        $permissions = [];
-        $permissionRows = $this->database->table($this->tableName)
-            ->select('permissions.*')
-            ->joinWhere('role_permissions', 'permissions.id = role_permissions.permission_id')
-            ->where('role_permissions.role_id', $roleId);
-        
-        foreach ($permissionRows as $row) {
-            $permissions[] = Permission::fromArray($row->toArray());
-        }
+        $role = $this->entityManager->getReference(Role::class, $roleId);
+        $permissions = $role->getPermissions()->toArray();
         
         return new Collection($permissions);
     }
     
-    /**
-     * Najde oprávnění pro uživatele
-     * 
-     * @param int $userId
-     * @return Collection<Permission>
-     */
     public function findByUser(int $userId): Collection
     {
-        // Spojení tabulek user_roles, role_permissions a permissions
-        $permissions = [];
-        $permissionRows = $this->database->query("
-            SELECT DISTINCT p.*
-            FROM permissions p
-            JOIN role_permissions rp ON p.id = rp.permission_id
-            JOIN user_roles ur ON rp.role_id = ur.role_id
-            WHERE ur.user_id = ?
-        ", $userId);
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('DISTINCT p')
+           ->from(Permission::class, 'p')
+           ->join('p.roles', 'r')
+           ->join('r.users', 'u')
+           ->where('u.id = :userId')
+           ->setParameter('userId', $userId);
         
-        foreach ($permissionRows as $row) {
-            $permissions[] = Permission::fromArray((array) $row);
-        }
+        $permissions = $qb->getQuery()->getResult();
         
         return new Collection($permissions);
     }
     
-    /**
-     * Najde oprávnění s pokročilým filtrováním
-     * 
-     * @param array $filters Kritéria filtrování
-     * @param string $sortBy Pole pro řazení
-     * @param string $sortDir Směr řazení (ASC nebo DESC)
-     * @param int $page Číslo stránky
-     * @param int $itemsPerPage Počet položek na stránku
-     * @return PaginatedCollection<Permission>
-     */
     public function findWithFilters(array $filters = [], string $sortBy = 'name', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $selection = $this->getTable();
+        $qb = $this->createQueryBuilder('p');
         
-        // Aplikace filtrů
+        // Apply filters
         foreach ($filters as $key => $value) {
             if ($value === null || $value === '') {
                 continue;
@@ -110,251 +72,164 @@ class PermissionRepository extends BaseRepository implements IPermissionReposito
                 case 'name':
                 case 'resource':
                 case 'action':
-                    $selection->where("$key LIKE ?", "%{$value}%");
+                    $qb->andWhere("p.$key LIKE :$key")
+                       ->setParameter($key, '%' . $value . '%');
                     break;
-                    
+                
                 case 'role_id':
-                    $selection->where('id IN ?', 
-                        $this->database->table('role_permissions')
-                            ->where('role_id', $value)
-                            ->select('permission_id')
-                    );
+                    $qb->join('p.roles', 'r')
+                       ->andWhere('r.id = :roleId')
+                       ->setParameter('roleId', $value);
                     break;
-                    
+                
                 case 'user_id':
-                    $selection->where('id IN ?', 
-                        $this->database->query("
-                            SELECT DISTINCT rp.permission_id
-                            FROM role_permissions rp
-                            JOIN user_roles ur ON rp.role_id = ur.role_id
-                            WHERE ur.user_id = ?
-                        ", $value)->fetchAll()
-                    );
+                    $qb->join('p.roles', 'r')
+                       ->join('r.users', 'u')
+                       ->andWhere('u.id = :userId')
+                       ->setParameter('userId', $value);
                     break;
                 
                 default:
-                    if (property_exists('App\Model\Permission', $key)) {
-                        $selection->where($key, $value);
+                    if (property_exists(Permission::class, $key)) {
+                        $qb->andWhere("p.$key = :$key")
+                           ->setParameter($key, $value);
                     }
                     break;
             }
         }
         
-        // Počet celkových výsledků
-        $count = $selection->count();
-        $pages = (int) ceil($count / $itemsPerPage);
-        
-        // Aplikace řazení
-        if (property_exists('App\Model\Permission', $sortBy)) {
-            $selection->order("{$sortBy} {$sortDir}");
+        // Apply ordering
+        if (property_exists(Permission::class, $sortBy)) {
+            $qb->orderBy("p.$sortBy", $sortDir);
         } else {
-            $selection->order("name ASC"); // Výchozí řazení
+            $qb->orderBy('p.name', 'ASC');
         }
         
-        // Aplikace stránkování
-        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
-        
-        // Konverze na entity
-        $items = [];
-        foreach ($selection as $row) {
-            $items[] = Permission::fromArray($row->toArray());
-        }
-        
-        return new PaginatedCollection(
-            new Collection($items),
-            $count,
-            $page,
-            $itemsPerPage,
-            $pages
-        );
+        return $this->paginate($qb, $page, $itemsPerPage);
     }
-
-     /**
-     * Zjistí, zda oprávnění existuje podle zdroje a akce
-     * 
-     * @param string $resource
-     * @param string $action
-     * @return bool
-     */
+    
     public function existsByResourceAndAction(string $resource, string $action): bool
     {
-        return $this->getTable()
-            ->where('resource', $resource)
-            ->where('action', $action)
-            ->count() > 0;
+        return $this->findByResourceAndAction($resource, $action) !== null;
     }
     
-    /**
-     * Vytvoří nové oprávnění
-     * 
-     * @param Permission $permission
-     * @return int
-     */
     public function create(Permission $permission): int
     {
-        // Kontrola unikátnosti zdroj:akce
-        if ($this->existsByResourceAndAction($permission->resource, $permission->action)) {
-            throw new \Exception("Oprávnění pro '{$permission->resource}:{$permission->action}' již existuje.");
+        // Check uniqueness of resource:action
+        if ($this->existsByResourceAndAction($permission->getResource(), $permission->getAction())) {
+            throw new \Exception("Permission for '{$permission->getResource()}:{$permission->getAction()}' already exists.");
         }
         
-        return $this->save($permission);
+        $this->entityManager->persist($permission);
+        $this->entityManager->flush();
+        
+        return $permission->getId();
     }
     
-    /**
-     * Aktualizuje existující oprávnění
-     * 
-     * @param Permission $permission
-     * @return int
-     */
     public function update(Permission $permission): int
     {
-        // Kontrola unikátnosti zdroj:akce, pokud se změnily
-        $originalPermission = $this->findById($permission->id);
+        // Check uniqueness of resource:action if changed
+        $originalPermission = $this->find($permission->getId());
         
-        if ($originalPermission && 
-            ($originalPermission->resource !== $permission->resource || $originalPermission->action !== $permission->action) &&
-            $this->existsByResourceAndAction($permission->resource, $permission->action)) {
-            throw new \Exception("Oprávnění pro '{$permission->resource}:{$permission->action}' již existuje.");
+        if ($originalPermission &&
+            ($originalPermission->getResource() !== $permission->getResource() ||
+             $originalPermission->getAction() !== $permission->getAction()) &&
+            $this->existsByResourceAndAction($permission->getResource(), $permission->getAction())) {
+            throw new \Exception("Permission for '{$permission->getResource()}:{$permission->getAction()}' already exists.");
         }
         
-        return $this->save($permission);
+        $this->entityManager->persist($permission);
+        $this->entityManager->flush();
+        
+        return $permission->getId();
     }
     
-    /**
-     * Najde všechny dostupné zdroje
-     * 
-     * @return array
-     */
     public function findAllResources(): array
     {
-        $resources = [];
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('DISTINCT p.resource')
+           ->from(Permission::class, 'p')
+           ->orderBy('p.resource', 'ASC');
         
-        $rows = $this->database->query("SELECT DISTINCT resource FROM {$this->tableName} ORDER BY resource");
+        $result = $qb->getQuery()->getScalarResult();
         
-        foreach ($rows as $row) {
-            $resources[] = $row->resource;
-        }
-        
-        return $resources;
+        return array_column($result, 'resource');
     }
     
-    /**
-     * Najde všechny akce pro daný zdroj
-     * 
-     * @param string $resource
-     * @return array
-     */
     public function findActionsByResource(string $resource): array
     {
-        $actions = [];
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('p.action')
+           ->from(Permission::class, 'p')
+           ->where('p.resource = :resource')
+           ->setParameter('resource', $resource)
+           ->orderBy('p.action', 'ASC');
         
-        $rows = $this->database->query("
-            SELECT action
-            FROM {$this->tableName}
-            WHERE resource = ?
-            ORDER BY action
-        ", $resource);
+        $result = $qb->getQuery()->getScalarResult();
         
-        foreach ($rows as $row) {
-            $actions[] = $row->action;
-        }
-        
-        return $actions;
+        return array_column($result, 'action');
     }
     
-    /**
-     * Vrátí všechny role, které mají dané oprávnění
-     * 
-     * @param int $permissionId
-     * @return Collection<Role>
-     */
     public function getRolesWithPermission(int $permissionId): Collection
     {
-        $roles = [];
-        
-        $rows = $this->database->table('roles')
-            ->select('roles.*')
-            ->joinWhere('role_permissions', 'roles.id = role_permissions.role_id')
-            ->where('role_permissions.permission_id', $permissionId);
-            
-        foreach ($rows as $row) {
-            $roles[] = \App\Model\Role::fromArray($row->toArray());
+        $permission = $this->find($permissionId);
+        if (!$permission) {
+            return new Collection([]);
         }
+        
+        $roles = $permission->getRoles()->toArray();
         
         return new Collection($roles);
     }
     
-    /**
-     * Vrátí počet rolí, které mají dané oprávnění
-     * 
-     * @param int $permissionId
-     * @return int
-     */
     public function countRolesWithPermission(int $permissionId): int
     {
-        return $this->database->table('role_permissions')
-            ->where('permission_id', $permissionId)
-            ->count();
-    }
-    
-    /**
-     * Najde všechna oprávnění pro daný zdroj
-     * 
-     * @param string $resource
-     * @return Collection<Permission>
-     */
-    public function findByResource(string $resource): Collection
-    {
-        $permissions = [];
-        
-        $rows = $this->getTable()->where('resource', $resource);
-        
-        foreach ($rows as $row) {
-            $permissions[] = Permission::fromArray($row->toArray());
+        $permission = $this->find($permissionId);
+        if (!$permission) {
+            return 0;
         }
         
+        return $permission->getRoles()->count();
+    }
+    
+    public function findByResource(string $resource): Collection
+    {
+        $permissions = $this->findBy(['resource' => $resource]);
         return new Collection($permissions);
     }
     
-    /**
-     * Smaže oprávnění včetně všech vazeb na role
-     * 
-     * @param int $permissionId
-     * @return bool
-     */
     public function deleteWithRoleBindings(int $permissionId): bool
     {
-        return $this->transaction(function() use ($permissionId) {
-            // Nejprve odstraníme vazby role-oprávnění
-            $this->database->table('role_permissions')
-                ->where('permission_id', $permissionId)
-                ->delete();
-                
-            // Poté odstraníme samotné oprávnění
-            return $this->delete($permissionId) > 0;
-        });
+        $permission = $this->find($permissionId);
+        if (!$permission) {
+            return false;
+        }
+        
+        $this->entityManager->beginTransaction();
+        
+        try {
+            // Remove from all roles
+            foreach ($permission->getRoles() as $role) {
+                $role->removePermission($permission);
+            }
+            
+            // Delete the permission
+            $this->entityManager->remove($permission);
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+            
+            return true;
+        } catch (\Exception $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
     }
     
-    /**
-     * Najde oprávnění podle filtrů
-     * 
-     * @param array $criteria
-     * @param string $sortBy
-     * @param string $sortDir
-     * @param int $page
-     * @param int $itemsPerPage
-     * @return PaginatedCollection<Permission>
-     */
-    public function search(
-        array $criteria, 
-        string $sortBy = 'name', 
-        string $sortDir = 'ASC', 
-        int $page = 1, 
-        int $itemsPerPage = 10
-    ): PaginatedCollection {
-        $selection = $this->getTable();
+    public function search(array $criteria, string $sortBy = 'name', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    {
+        $qb = $this->createQueryBuilder('p');
         
-        // Přidáme jednotlivá kritéria
+        // Apply criteria
         foreach ($criteria as $key => $value) {
             if ($value === null || $value === '') {
                 continue;
@@ -364,79 +239,46 @@ class PermissionRepository extends BaseRepository implements IPermissionReposito
                 case 'name':
                 case 'resource':
                 case 'action':
-                    $selection->where("$key LIKE ?", "%{$value}%");
-                    break;
-                    
                 case 'description':
-                    $selection->where("$key LIKE ?", "%{$value}%");
+                    $qb->andWhere("p.$key LIKE :$key")
+                       ->setParameter($key, '%' . $value . '%');
                     break;
-                    
+                
                 case 'role_id':
-                    $permissionIds = $this->database->table('role_permissions')
-                        ->where('role_id', $value)
-                        ->select('permission_id');
-                        
-                    $selection->where('id IN ?', $permissionIds);
+                    $qb->join('p.roles', 'r')
+                       ->andWhere('r.id = :roleId')
+                       ->setParameter('roleId', $value);
                     break;
-                    
+                
                 default:
-                    if (property_exists('App\Model\Permission', $key)) {
-                        $selection->where($key, $value);
+                    if (property_exists(Permission::class, $key)) {
+                        $qb->andWhere("p.$key = :$key")
+                           ->setParameter($key, $value);
                     }
                     break;
             }
         }
         
-        // Počet celkových výsledků
-        $count = $selection->count();
-        $pages = (int) ceil($count / $itemsPerPage);
-        
-        // Řazení
-        if (property_exists('App\Model\Permission', $sortBy)) {
-            $selection->order("$sortBy $sortDir");
+        // Apply ordering
+        if (property_exists(Permission::class, $sortBy)) {
+            $qb->orderBy("p.$sortBy", $sortDir);
         } else {
-            $selection->order('resource ASC, action ASC');
+            $qb->orderBy('p.resource', 'ASC')
+               ->addOrderBy('p.action', 'ASC');
         }
         
-        // Stránkování
-        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
-        
-        // Konverze na entity
-        $permissions = [];
-        foreach ($selection as $row) {
-            $permissions[] = Permission::fromArray($row->toArray());
-        }
-        
-        return new PaginatedCollection(
-            new Collection($permissions),
-            $count,
-            $page,
-            $itemsPerPage,
-            $pages
-        );
+        return $this->paginate($qb, $page, $itemsPerPage);
     }
     
-    /**
-     * Vrátí všechna oprávnění seskupená podle zdroje
-     * 
-     * @return array
-     */
     public function findAllGroupedByResource(): array
     {
         $result = [];
         
-        // Nejprve získáme všechny unikátní zdroje
+        // Get all resources
         $resources = $this->findAllResources();
         
         foreach ($resources as $resource) {
-            $permissions = [];
-            
-            $rows = $this->getTable()->where('resource', $resource);
-            
-            foreach ($rows as $row) {
-                $permissions[] = Permission::fromArray($row->toArray());
-            }
-            
+            $permissions = $this->findByResource($resource)->toArray();
             $result[$resource] = $permissions;
         }
         

@@ -2,87 +2,54 @@
 
 declare(strict_types=1);
 
-namespace App\Repository;
+namespace App\Repository\Doctrine;
 
-use App\Model\Role;
-use App\Model\Permission;
+use App\Entity\Role;
+use App\Entity\Permission;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IRoleRepository;
-use Nette\Database\Explorer;
-use Nette\Database\Table\Selection;
+use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * @extends BaseRepository<Role>
- * @implements IRoleRepository
+ * @extends BaseDoctrineRepository<Role>
  */
-class RoleRepository extends BaseRepository implements IRoleRepository
+class RoleRepository extends BaseDoctrineRepository implements IRoleRepository
 {
-    public function __construct(Explorer $database)
+    public function __construct(EntityManagerInterface $entityManager)
     {
-        parent::__construct($database);
-        $this->tableName = 'roles';
-        $this->entityClass = Role::class;
+        parent::__construct($entityManager, Role::class);
     }
-
-    /**
-     * Najde roli podle kódu
-     * 
-     * @param string $code
-     * @return Role|null
-     */
+    
+    protected function createCollection(array $entities): Collection
+    {
+        return new Collection($entities);
+    }
+    
     public function findByCode(string $code): ?Role
     {
-        /** @var Role|null */
         return $this->findOneBy(['code' => $code]);
     }
     
-    /**
-     * Najde role s jejich oprávněními
-     * 
-     * @param int $roleId
-     * @return array|null
-     */
     public function getRoleWithPermissions(int $roleId): ?array
     {
-        $role = $this->findById($roleId);
+        $role = $this->find($roleId);
         
         if (!$role) {
             return null;
         }
         
-        // Získání oprávnění pro roli
-        $permissions = [];
-        $permissionRows = $this->database->table('permissions')
-            ->select('permissions.*')
-            ->joinWhere('role_permissions', 'permissions.id = role_permissions.permission_id')
-            ->where('role_permissions.role_id', $roleId);
-        
-        foreach ($permissionRows as $row) {
-            $permissions[] = Permission::fromArray($row->toArray());
-        }
-        
         return [
             'role' => $role,
-            'permissions' => new Collection($permissions)
+            'permissions' => new Collection($role->getPermissions()->toArray())
         ];
     }
     
-    /**
-     * Najde role s pokročilým filtrováním
-     * 
-     * @param array $filters Kritéria filtrování
-     * @param string $sortBy Pole pro řazení
-     * @param string $sortDir Směr řazení (ASC nebo DESC)
-     * @param int $page Číslo stránky
-     * @param int $itemsPerPage Počet položek na stránku
-     * @return PaginatedCollection<Role>
-     */
     public function findWithFilters(array $filters = [], string $sortBy = 'name', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $selection = $this->getTable();
+        $qb = $this->createQueryBuilder('r');
         
-        // Aplikace filtrů
+        // Apply filters
         foreach ($filters as $key => $value) {
             if ($value === null || $value === '') {
                 continue;
@@ -91,343 +58,277 @@ class RoleRepository extends BaseRepository implements IRoleRepository
             switch ($key) {
                 case 'name':
                 case 'code':
-                    $selection->where("$key LIKE ?", "%{$value}%");
+                    $qb->andWhere("r.$key LIKE :$key")
+                       ->setParameter($key, '%' . $value . '%');
                     break;
-                    
+                
                 case 'permission_id':
-                    $selection->where('id IN ?', 
-                        $this->database->table('role_permissions')
-                            ->where('permission_id', $value)
-                            ->select('role_id')
-                    );
+                    $qb->join('r.permissions', 'p')
+                       ->andWhere('p.id = :permissionId')
+                       ->setParameter('permissionId', $value);
                     break;
-                    
+                
                 case 'min_priority':
-                    $selection->where('priority >= ?', (int) $value);
+                    $qb->andWhere('r.priority >= :minPriority')
+                       ->setParameter('minPriority', $value);
                     break;
-                    
+                
                 case 'max_priority':
-                    $selection->where('priority <= ?', (int) $value);
+                    $qb->andWhere('r.priority <= :maxPriority')
+                       ->setParameter('maxPriority', $value);
                     break;
                 
                 default:
-                    if (property_exists('App\Model\Role', $key)) {
-                        $selection->where($key, $value);
+                    if (property_exists(Role::class, $key)) {
+                        $qb->andWhere("r.$key = :$key")
+                           ->setParameter($key, $value);
                     }
                     break;
             }
         }
         
-        // Počet celkových výsledků
-        $count = $selection->count();
-        $pages = (int) ceil($count / $itemsPerPage);
-        
-        // Aplikace řazení
-        if (property_exists('App\Model\Role', $sortBy)) {
-            $selection->order("{$sortBy} {$sortDir}");
+        // Apply ordering
+        if (property_exists(Role::class, $sortBy)) {
+            $qb->orderBy("r.$sortBy", $sortDir);
         } else {
-            $selection->order("name ASC"); // Výchozí řazení
+            $qb->orderBy('r.name', 'ASC');
         }
         
-        // Aplikace stránkování
-        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
-        
-        // Konverze na entity
-        $items = [];
-        foreach ($selection as $row) {
-            $items[] = Role::fromArray($row->toArray());
-        }
-        
-        return new PaginatedCollection(
-            new Collection($items),
-            $count,
-            $page,
-            $itemsPerPage,
-            $pages
-        );
+        return $this->paginate($qb, $page, $itemsPerPage);
     }
     
-    /**
-     * Přidá roli oprávnění
-     * 
-     * @param int $roleId
-     * @param int $permissionId
-     * @return bool
-     */
     public function addRolePermission(int $roleId, int $permissionId): bool
     {
-        // Kontrola, zda vazba již existuje
-        $exists = $this->database->table('role_permissions')
-            ->where('role_id', $roleId)
-            ->where('permission_id', $permissionId)
-            ->count() > 0;
+        $role = $this->find($roleId);
+        $permission = $this->entityManager->getReference(Permission::class, $permissionId);
         
-        if ($exists) {
-            return true; // Vazba už existuje
+        if (!$role || !$permission) {
+            return false;
         }
         
-        // Vložení nové vazby
-        $result = $this->database->table('role_permissions')->insert([
-            'role_id' => $roleId,
-            'permission_id' => $permissionId
-        ]);
+        // Check if already exists
+        if ($role->getPermissions()->contains($permission)) {
+            return true;
+        }
         
-        return $result !== false;
+        $role->addPermission($permission);
+        $this->entityManager->flush();
+        
+        return true;
     }
     
-    /**
-     * Odebere roli oprávnění
-     * 
-     * @param int $roleId
-     * @param int $permissionId
-     * @return bool
-     */
     public function removeRolePermission(int $roleId, int $permissionId): bool
     {
-        $result = $this->database->table('role_permissions')
-            ->where('role_id', $roleId)
-            ->where('permission_id', $permissionId)
-            ->delete();
+        $role = $this->find($roleId);
+        $permission = $this->entityManager->getReference(Permission::class, $permissionId);
         
-        return $result > 0;
+        if (!$role || !$permission) {
+            return false;
+        }
+        
+        if (!$role->getPermissions()->contains($permission)) {
+            return true;
+        }
+        
+        $role->removePermission($permission);
+        $this->entityManager->flush();
+        
+        return true;
     }
     
-    /**
-     * Získá role pro uživatele
-     * 
-     * @param int $userId
-     * @return Collection<Role>
-     */
     public function findRolesByUser(int $userId): Collection
     {
-        $roles = [];
-        $roleRows = $this->database->table($this->tableName)
-            ->select('roles.*')
-            ->joinWhere('user_roles', 'roles.id = user_roles.role_id')
-            ->where('user_roles.user_id', $userId)
-            ->order('priority DESC'); // Prioritnější role první
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('r')
+           ->from(Role::class, 'r')
+           ->join('r.users', 'u')
+           ->where('u.id = :userId')
+           ->setParameter('userId', $userId)
+           ->orderBy('r.priority', 'DESC');
         
-        foreach ($roleRows as $row) {
-            $roles[] = Role::fromArray($row->toArray());
-        }
+        $roles = $qb->getQuery()->getResult();
         
         return new Collection($roles);
     }
-
-     /**
-     * Zjistí, zda role existuje podle kódu
-     * 
-     * @param string $code
-     * @return bool
-     */
+    
     public function existsByCode(string $code): bool
     {
-        return $this->getTable()->where('code', $code)->count() > 0;
+        return $this->findByCode($code) !== null;
     }
     
-    /**
-     * Vytvoří novou roli
-     * 
-     * @param Role $role
-     * @return int
-     */
     public function create(Role $role): int
     {
-        // Kontrola unikátnosti kódu
-        if ($this->existsByCode($role->code)) {
-            throw new \Exception("Role s kódem '{$role->code}' již existuje.");
+        // Check uniqueness of code
+        if ($this->existsByCode($role->getCode())) {
+            throw new \Exception("Role with code '{$role->getCode()}' already exists.");
         }
         
-        return $this->save($role);
+        $this->entityManager->persist($role);
+        $this->entityManager->flush();
+        
+        return $role->getId();
     }
     
-    /**
-     * Aktualizuje existující roli
-     * 
-     * @param Role $role
-     * @return int
-     */
     public function update(Role $role): int
     {
-        // Kontrola unikátnosti kódu, pokud se změnil
-        $originalRole = $this->findById($role->id);
+        // Check uniqueness of code if changed
+        $originalRole = $this->find($role->getId());
         
-        if ($originalRole && $originalRole->code !== $role->code && $this->existsByCode($role->code)) {
-            throw new \Exception("Role s kódem '{$role->code}' již existuje.");
+        if ($originalRole &&
+            $originalRole->getCode() !== $role->getCode() &&
+            $this->existsByCode($role->getCode())) {
+            throw new \Exception("Role with code '{$role->getCode()}' already exists.");
         }
         
-        return $this->save($role);
+        $this->entityManager->persist($role);
+        $this->entityManager->flush();
+        
+        return $role->getId();
     }
     
-    /**
-     * Najde role podle priority
-     * 
-     * @param int $priority
-     * @param string $operator
-     * @return Collection<Role>
-     */
     public function findByPriority(int $priority, string $operator = '='): Collection
     {
-        $roles = [];
-        $query = "priority $operator ?";
+        $qb = $this->createQueryBuilder('r');
         
-        $rows = $this->getTable()->where($query, $priority);
-        
-        foreach ($rows as $row) {
-            $roles[] = Role::fromArray($row->toArray());
+        switch ($operator) {
+            case '>':
+                $qb->where('r.priority > :priority');
+                break;
+            case '>=':
+                $qb->where('r.priority >= :priority');
+                break;
+            case '<':
+                $qb->where('r.priority < :priority');
+                break;
+            case '<=':
+                $qb->where('r.priority <= :priority');
+                break;
+            case '=':
+            default:
+                $qb->where('r.priority = :priority');
+                break;
         }
+        
+        $qb->setParameter('priority', $priority)
+           ->orderBy('r.priority', 'DESC');
+        
+        $roles = $qb->getQuery()->getResult();
         
         return new Collection($roles);
     }
     
-    /**
-     * Najde role s vyšší nebo stejnou prioritou
-     * 
-     * @param int $priority
-     * @return Collection<Role>
-     */
     public function findByPriorityHigherOrEqual(int $priority): Collection
     {
         return $this->findByPriority($priority, '>=');
     }
     
-    /**
-     * Najde role s nižší prioritou
-     * 
-     * @param int $priority
-     * @return Collection<Role>
-     */
     public function findByPriorityLower(int $priority): Collection
     {
         return $this->findByPriority($priority, '<');
     }
     
-    /**
-     * Vrátí všechna oprávnění pro roli
-     * 
-     * @param int $roleId
-     * @return Collection<Permission>
-     */
     public function getRolePermissions(int $roleId): Collection
     {
-        $permissions = [];
-        
-        $rows = $this->database->table('permissions')
-            ->select('permissions.*')
-            ->joinWhere('role_permissions', 'permissions.id = role_permissions.permission_id')
-            ->where('role_permissions.role_id', $roleId);
-            
-        foreach ($rows as $row) {
-            $permissions[] = Permission::fromArray($row->toArray());
+        $role = $this->find($roleId);
+        if (!$role) {
+            return new Collection([]);
         }
         
-        return new Collection($permissions);
+        return new Collection($role->getPermissions()->toArray());
     }
     
-    /**
-     * Zjistí, zda role má konkrétní oprávnění
-     * 
-     * @param int $roleId
-     * @param int $permissionId
-     * @return bool
-     */
     public function hasPermission(int $roleId, int $permissionId): bool
     {
-        return $this->database->table('role_permissions')
-            ->where('role_id', $roleId)
-            ->where('permission_id', $permissionId)
-            ->count() > 0;
+        $role = $this->find($roleId);
+        $permission = $this->entityManager->getReference(Permission::class, $permissionId);
+        
+        if (!$role || !$permission) {
+            return false;
+        }
+        
+        return $role->getPermissions()->contains($permission);
     }
     
-    /**
-     * Zjistí, zda role má všechna oprávnění z daného seznamu
-     * 
-     * @param int $roleId
-     * @param array $permissionIds
-     * @return bool
-     */
     public function hasAllPermissions(int $roleId, array $permissionIds): bool
     {
-        $count = $this->database->table('role_permissions')
-            ->where('role_id', $roleId)
-            ->where('permission_id', $permissionIds)
-            ->count();
-            
-        return $count === count($permissionIds);
+        $role = $this->find($roleId);
+        if (!$role) {
+            return false;
+        }
+        
+        $rolePermissions = $role->getPermissions();
+        
+        foreach ($permissionIds as $permissionId) {
+            $permission = $this->entityManager->getReference(Permission::class, $permissionId);
+            if (!$rolePermissions->contains($permission)) {
+                return false;
+            }
+        }
+        
+        return true;
     }
     
-    /**
-     * Zjistí, zda role má alespoň jedno oprávnění z daného seznamu
-     * 
-     * @param int $roleId
-     * @param array $permissionIds
-     * @return bool
-     */
     public function hasAnyPermission(int $roleId, array $permissionIds): bool
     {
-        return $this->database->table('role_permissions')
-            ->where('role_id', $roleId)
-            ->where('permission_id', $permissionIds)
-            ->count() > 0;
+        $role = $this->find($roleId);
+        if (!$role) {
+            return false;
+        }
+        
+        $rolePermissions = $role->getPermissions();
+        
+        foreach ($permissionIds as $permissionId) {
+            $permission = $this->entityManager->getReference(Permission::class, $permissionId);
+            if ($rolePermissions->contains($permission)) {
+                return true;
+            }
+        }
+        
+        return false;
     }
     
-    /**
-     * Vrátí počet uživatelů s danou rolí
-     * 
-     * @param int $roleId
-     * @return int
-     */
     public function countUsers(int $roleId): int
     {
-        return $this->database->table('user_roles')
-            ->where('role_id', $roleId)
-            ->count();
+        $role = $this->find($roleId);
+        if (!$role) {
+            return 0;
+        }
+        
+        return $role->getUsers()->count();
     }
     
-    /**
-     * Odstraní roli a všechny její oprávnění
-     * 
-     * @param int $roleId
-     * @return bool
-     */
     public function deleteWithPermissions(int $roleId): bool
     {
-        return $this->transaction(function() use ($roleId) {
-            // Nejprve odstraníme vazby role-oprávnění
-            $this->database->table('role_permissions')
-                ->where('role_id', $roleId)
-                ->delete();
-                
-            // Poté odstraníme vazby uživatel-role
-            $this->database->table('user_roles')
-                ->where('role_id', $roleId)
-                ->delete();
-                
-            // Nakonec odstraníme samotnou roli
-            return $this->delete($roleId) > 0;
-        });
+        $role = $this->find($roleId);
+        if (!$role) {
+            return false;
+        }
+        
+        $this->entityManager->beginTransaction();
+        
+        try {
+            // Remove role from all users
+            foreach ($role->getUsers() as $user) {
+                $user->removeRole($role);
+            }
+            
+            // Delete the role
+            $this->entityManager->remove($role);
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+            
+            return true;
+        } catch (\Exception $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
     }
     
-    /**
-     * Najde role podle filtru s paginací
-     * 
-     * @param array $criteria
-     * @param string $sortBy
-     * @param string $sortDir
-     * @param int $page
-     * @param int $itemsPerPage
-     * @return PaginatedCollection<Role>
-     */
-    public function search(
-        array $criteria, 
-        string $sortBy = 'name', 
-        string $sortDir = 'ASC', 
-        int $page = 1, 
-        int $itemsPerPage = 10
-    ): PaginatedCollection {
-        $selection = $this->getTable();
+    public function search(array $criteria, string $sortBy = 'name', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    {
+        $qb = $this->createQueryBuilder('r');
         
-        // Přidáme jednotlivá kritéria
+        // Apply criteria
         foreach ($criteria as $key => $value) {
             if ($value === null || $value === '') {
                 continue;
@@ -436,63 +337,44 @@ class RoleRepository extends BaseRepository implements IRoleRepository
             switch ($key) {
                 case 'name':
                 case 'code':
-                    $selection->where("$key LIKE ?", "%{$value}%");
-                    break;
-                    
                 case 'description':
-                    $selection->where("$key LIKE ?", "%{$value}%");
+                    $qb->andWhere("r.$key LIKE :$key")
+                       ->setParameter($key, '%' . $value . '%');
                     break;
-                    
+                
                 case 'permission_id':
-                    $roleIds = $this->database->table('role_permissions')
-                        ->where('permission_id', $value)
-                        ->select('role_id');
-                        
-                    $selection->where('id IN ?', $roleIds);
+                    $qb->join('r.permissions', 'p')
+                       ->andWhere('p.id = :permissionId')
+                       ->setParameter('permissionId', $value);
                     break;
-                    
+                
                 case 'min_priority':
-                    $selection->where('priority >= ?', $value);
+                    $qb->andWhere('r.priority >= :minPriority')
+                       ->setParameter('minPriority', $value);
                     break;
-                    
+                
                 case 'max_priority':
-                    $selection->where('priority <= ?', $value);
+                    $qb->andWhere('r.priority <= :maxPriority')
+                       ->setParameter('maxPriority', $value);
                     break;
-                    
+                
                 default:
-                    if (property_exists('App\Model\Role', $key)) {
-                        $selection->where($key, $value);
+                    if (property_exists(Role::class, $key)) {
+                        $qb->andWhere("r.$key = :$key")
+                           ->setParameter($key, $value);
                     }
                     break;
             }
         }
         
-        // Počet celkových výsledků
-        $count = $selection->count();
-        $pages = (int) ceil($count / $itemsPerPage);
-        
-        // Řazení
-        if (property_exists('App\Model\Role', $sortBy)) {
-            $selection->order("$sortBy $sortDir");
+        // Apply ordering
+        if (property_exists(Role::class, $sortBy)) {
+            $qb->orderBy("r.$sortBy", $sortDir);
         } else {
-            $selection->order('priority DESC, name ASC');
+            $qb->orderBy('r.priority', 'DESC')
+               ->addOrderBy('r.name', 'ASC');
         }
         
-        // Stránkování
-        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
-        
-        // Konverze na entity
-        $roles = [];
-        foreach ($selection as $row) {
-            $roles[] = Role::fromArray($row->toArray());
-        }
-        
-        return new PaginatedCollection(
-            new Collection($roles),
-            $count,
-            $page,
-            $itemsPerPage,
-            $pages
-        );
+        return $this->paginate($qb, $page, $itemsPerPage);
     }
 }

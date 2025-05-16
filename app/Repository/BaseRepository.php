@@ -2,260 +2,234 @@
 
 declare(strict_types=1);
 
-namespace App\Repository;
+namespace App\Repository\Doctrine;
 
 use App\Repository\Interface\IBaseRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Service\IBaseService;
-use Nette\Database\Explorer;
-use Nette\Database\Table\Selection;
-use Nette\SmartObject;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\EntityRepository;
+use Doctrine\ORM\Tools\Pagination\Paginator;
+use Doctrine\ORM\QueryBuilder;
 
 /**
+ * Základní repozitář pro Doctrine entity
+ * 
  * @template T of object
- * @implements BaseRepositoryInterface<T>
+ * @extends EntityRepository<T>
+ * @implements IBaseRepository<T>
  */
-abstract class BaseRepository implements IBaseRepository
+abstract class BaseRepository extends EntityRepository implements IBaseRepository
 {
-    use SmartObject;
-
-    /** @var Explorer */
-    protected Explorer $database;
-
-    /** @var string */
-    protected string $tableName;
-
-    /** @var string The entity class name this repository manages */
+    protected EntityManagerInterface $entityManager;
     protected string $entityClass;
 
-    public function __construct(Explorer $database)
-    {
-        $this->database = $database;
-    }
-
+    // -------------------------------------------------------------------------
+    // KONSTRUKTOR A INICIALIZACE
+    // -------------------------------------------------------------------------
+    
     /**
-     * Get all records
+     * Konstruktor základního repozitáře
      * 
-     * @return Selection
+     * @param EntityManagerInterface $entityManager Entity Manager instance
+     * @param string $entityClass Název třídy entity
      */
-    public function findAll(): Selection
+    public function __construct(EntityManagerInterface $entityManager, string $entityClass)
     {
-        return $this->getTable();
+        $this->entityManager = $entityManager;
+        $this->entityClass = $entityClass;
+        
+        $metadata = $entityManager->getClassMetadata($entityClass);
+        parent::__construct($entityManager, $metadata);
+    }
+
+    // -------------------------------------------------------------------------
+    // ZÁKLADNÍ CRUD OPERACE
+    // -------------------------------------------------------------------------
+
+    /**
+     * Vrátí všechny záznamy entity
+     * 
+     * @return iterable<T> Kolekce všech entit
+     */
+    public function findAll(): iterable
+    {
+        return parent::findAll();
     }
 
     /**
-     * Get record by ID
+     * Najde entitu podle ID
      * 
-     * @param int $id
-     * @return T|null The entity or null if not found
+     * @param int $id ID entity
+     * @return T|null Entita nebo null, pokud nebyla nalezena
      */
     public function findById(int $id): ?object
     {
-        $row = $this->getTable()->get($id);
-        return $row ? $this->createEntity($row->toArray()) : null;
+        return $this->find($id);
     }
 
     /**
-     * Find one record by given criteria
+     * Uloží novou nebo aktualizuje existující entitu
      * 
-     * @param array $criteria
-     * @return T|null The entity or null if not found
-     */
-    public function findOneBy(array $criteria): ?object
-    {
-        $result = $this->findBy($criteria)->limit(1)->fetch();
-        return $result ? $this->createEntity($result->toArray()) : null;
-    }
-
-    /**
-     * Find records by given criteria
-     * 
-     * @param array $criteria
-     * @return Selection
-     */
-    public function findBy(array $criteria = []): Selection
-    {
-        $selection = $this->getTable();
-        foreach ($criteria as $key => $value) {
-            $selection->where($key, $value);
-        }
-        return $selection;
-    }
-
-    /**
-     * Create a new record or update existing
-     * 
-     * @param T $entity
-     * @return int The ID of the record
+     * @param T $entity Entita k uložení
+     * @return int ID uložené entity
      */
     public function save(object $entity): int
     {
-        $data = $this->entityToArray($entity);
+        $this->entityManager->persist($entity);
+        $this->entityManager->flush();
         
-        // Remove ID for insertions
-        if (!isset($entity->id)) {
-            unset($data['id']);
-        }
-        
-        if (isset($entity->id)) {
-            // Update existing record
-            $this->getTable()->wherePrimary($entity->id)->update($data);
-            return $entity->id;
-        } else {
-            // Insert new record
-            $row = $this->getTable()->insert($data);
-            $id = $row->getPrimary();
-            $entity->id = $id;
-            return $id;
-        }
+        return $entity->getId();
     }
 
     /**
-     * Delete a record
+     * Smaže entitu podle ID
      * 
-     * @param int $id
-     * @return int Number of affected rows
+     * @param int $id ID entity ke smazání
+     * @return int Počet smazaných záznamů (0 nebo 1)
      */
     public function delete(int $id): int
     {
-        return $this->getTable()->wherePrimary($id)->delete();
+        $entity = $this->find($id);
+        if ($entity) {
+            $this->entityManager->remove($entity);
+            $this->entityManager->flush();
+            return 1;
+        }
+        
+        return 0;
     }
 
-    /**
-     * Count records based on criteria
-     * 
-     * @param array $criteria
-     * @return int
-     */
-    public function count(array $criteria = []): int
-    {
-        return $this->findBy($criteria)->count();
-    }
+    // -------------------------------------------------------------------------
+    // VYHLEDÁVACÍ METODY
+    // -------------------------------------------------------------------------
+
+/**
+ * Najde jeden záznam podle kritérií
+ * 
+ * @param array $criteria Kritéria vyhledávání
+ * @param array|null $orderBy Kritéria řazení
+ * @return T|null Entita nebo null, pokud nebyla nalezena
+ */
+public function findOneBy(array $criteria, ?array $orderBy = null): ?object
+{
+    return parent::findOneBy($criteria, $orderBy);
+}
 
     /**
-     * Find records with pagination
+ * Najde záznamy podle kritérií
+ * 
+ * @param array $criteria Kritéria vyhledávání
+ * @param array|null $orderBy Kritéria řazení
+ * @param int|null $limit Maximální počet výsledků
+ * @param int|null $offset Posun výsledků
+ * @return iterable<T> Kolekce nalezených entit
+ */
+public function findBy(array $criteria = [], ?array $orderBy = null, $limit = null, $offset = null): iterable
+{
+    return parent::findBy($criteria, $orderBy, $limit, $offset);
+}
+
+    /**
+     * Najde záznamy se stránkováním
      * 
-     * @param array $criteria
-     * @param int $page
-     * @param int $itemsPerPage
-     * @param string $orderColumn
-     * @param string $orderDir
-     * @return PaginatedCollection<T>
+     * @param array $criteria Kritéria pro vyhledávání
+     * @param int $page Číslo stránky (začíná od 1)
+     * @param int $itemsPerPage Počet položek na stránku
+     * @param string $orderColumn Sloupec pro řazení
+     * @param string $orderDir Směr řazení (ASC nebo DESC)
+     * @return PaginatedCollection<T> Stránkovaná kolekce entit
      */
     public function findWithPagination(array $criteria = [], int $page = 1, int $itemsPerPage = 10, string $orderColumn = 'id', string $orderDir = 'ASC'): PaginatedCollection
     {
-        $selection = $this->findBy($criteria);
-        $selection->order("$orderColumn $orderDir");
+        $qb = $this->createQueryBuilder('e');
         
-        $count = $selection->count();
-        $pages = (int) ceil($count / $itemsPerPage);
-        
-        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
-        
-        // Convert rows to entities
-        $items = [];
-        foreach ($selection as $row) {
-            $items[] = $this->createEntity($row->toArray());
+        // Apply criteria
+        foreach ($criteria as $field => $value) {
+            if (is_array($value)) {
+                $qb->andWhere("e.$field IN (:$field)")
+                   ->setParameter($field, $value);
+            } else {
+                $qb->andWhere("e.$field = :$field")
+                   ->setParameter($field, $value);
+            }
         }
         
-        // Vytvoření typované kolekce
-        $collection = $this->createCollection($items);
+        // Apply ordering
+        $qb->orderBy("e.$orderColumn", $orderDir);
         
-        // Zabalení do stránkované kolekce
-        return new PaginatedCollection(
-            $collection,
-            $count,
-            $page,
-            $itemsPerPage,
-            $pages
-        );
+        return $this->paginate($qb, $page, $itemsPerPage);
+    }
+
+    // -------------------------------------------------------------------------
+    // METODY PRO POČÍTÁNÍ A OVĚŘOVÁNÍ
+    // -------------------------------------------------------------------------
+
+    /**
+     * Spočítá záznamy podle kritérií
+     * 
+     * @param array $criteria Kritéria pro počítání záznamů
+     * @return int Počet záznamů
+     */
+    public function count(array $criteria = []): int
+    {
+        $qb = $this->createQueryBuilder('e')
+            ->select('COUNT(e.id)');
+        
+        foreach ($criteria as $field => $value) {
+            $qb->andWhere("e.$field = :$field")
+               ->setParameter($field, $value);
+        }
+        
+        return (int) $qb->getQuery()->getSingleScalarResult();
     }
 
     /**
-     * Get the table
+     * Ověří, zda existuje entita s daným ID
      * 
-     * @return Selection
-     */
-    protected function getTable(): Selection
-    {
-        return $this->database->table($this->tableName);
-    }
-    
-    /**
-     * Create an entity instance from data array
-     * 
-     * @param array $data
-     * @return T
-     */
-    protected function createEntity(array $data): object
-    {
-        return call_user_func([$this->entityClass, 'fromArray'], $data);
-    }
-
-    /**
-     * Convert entity to array for database operations
-     * 
-     * @param T $entity
-     * @return array
-     */
-    protected function entityToArray(object $entity): array
-    {
-        return $entity->toArray();
-    }
-    
-    /**
-     * Create a collection from entities
-     * 
-     * @param T[] $entities
-     * @return Collection<T>
-     */
-    protected function createCollection(array $entities): Collection
-    {
-        return new Collection($entities);
-    }
-
-    /**
-     * Kontroluje, zda entita s daným ID existuje
-     * 
-     * @param int $id
-     * @return bool
+     * @param int $id ID entity k ověření
+     * @return bool Výsledek ověření
      */
     public function exists(int $id): bool
     {
-        return $this->getTable()->wherePrimary($id)->count() > 0;
+        return $this->find($id) !== null;
     }
-    
+
+    // -------------------------------------------------------------------------
+    // TRANSAKČNÍ METODY
+    // -------------------------------------------------------------------------
+
     /**
-     * Začíná transakci
+     * Zahájí transakci
      */
     public function beginTransaction(): void
     {
-        $this->database->beginTransaction();
+        $this->entityManager->beginTransaction();
     }
-    
+
     /**
-     * Potvrzuje transakci
+     * Potvrdí transakci
      */
     public function commit(): void
     {
-        $this->database->commit();
+        $this->entityManager->flush();
+        $this->entityManager->commit();
     }
-    
+
     /**
-     * Vrací transakci
+     * Vrátí transakci
      */
     public function rollback(): void
     {
-        $this->database->rollBack();
+        $this->entityManager->rollback();
     }
-    
+
     /**
-     * Provede transakční operaci s callback funkcí
+     * Provede transakci s callbackem
      * 
-     * @param callable $callback
-     * @return mixed
-     * @throws \Exception
+     * @param callable $callback Callback, který se má provést v transakci
+     * @return mixed Výsledek callbacku
+     * @throws \Exception Při chybě v transakci
      */
     public function transaction(callable $callback)
     {
@@ -269,4 +243,46 @@ abstract class BaseRepository implements IBaseRepository
             throw $e;
         }
     }
+
+    // -------------------------------------------------------------------------
+    // POMOCNÉ METODY
+    // -------------------------------------------------------------------------
+
+    /**
+     * Pomocná metoda pro stránkování výsledků
+     * 
+     * @param QueryBuilder $qb Query builder instance
+     * @param int $page Číslo stránky
+     * @param int $itemsPerPage Počet položek na stránku
+     * @return PaginatedCollection<T> Stránkovaná kolekce entit
+     */
+    protected function paginate(QueryBuilder $qb, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    {
+        $paginator = new Paginator($qb);
+        $paginator->getQuery()
+            ->setFirstResult(($page - 1) * $itemsPerPage)
+            ->setMaxResults($itemsPerPage);
+
+        $total = count($paginator);
+        $pages = (int) ceil($total / $itemsPerPage);
+        
+        $entities = iterator_to_array($paginator->getIterator());
+        $collection = $this->createCollection($entities);
+        
+        return new PaginatedCollection(
+            $collection,
+            $total,
+            $page,
+            $itemsPerPage,
+            $pages
+        );
+    }
+
+    /**
+     * Vytvoří typovanou kolekci z pole entit
+     * 
+     * @param array<T> $entities Pole entit
+     * @return Collection<T> Typovaná kolekce entit
+     */
+    abstract protected function createCollection(array $entities): Collection;
 }

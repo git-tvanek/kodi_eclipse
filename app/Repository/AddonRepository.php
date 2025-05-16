@@ -2,414 +2,488 @@
 
 declare(strict_types=1);
 
-namespace App\Repository;
+namespace App\Repository\Doctrine;
 
-use App\Model\Addon;
-use App\Model\Screenshot;
-use App\Model\Tag;
-use App\Model\AddonTag;
+use App\Entity\Addon;
+use App\Entity\Author;
+use App\Entity\Category;
+use App\Entity\Tag;
+use App\Entity\Screenshot;
 use App\Collection\Collection;
+use App\Collection\AddonCollection;
 use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IAddonRepository;
-use App\Repository\Query\AddonAdvancedSearchQuery;
-use App\Repository\Query\AddonFilterQuery;
-use Nette\Database\Explorer;
-use Nette\Database\Table\Selection;
-use Nette\Http\FileUpload;
-use Nette\Utils\Strings;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
+use Doctrine\ORM\Query\Expr\Join;
+use Doctrine\ORM\Tools\Pagination\Paginator;
+use Doctrine\ORM\Tools\Pagination\PaginatorInterface;
+use Doctrine\ORM\EntityRepository;
+use Doctrine\ORM\Query;
+use Doctrine\ORM\Query\Expr;
+use Doctrine\ORM\Query\Expr\Orx;
+
 
 /**
- * @extends BaseRepository<Addon>
- * @implements AddonRepositoryInterface
+ * Repozitář pro práci s doplňky
+ * 
+ * @extends BaseDoctrineRepository<Addon>
  */
 class AddonRepository extends BaseRepository implements IAddonRepository
 {
-    public function __construct(Explorer $database)
-    {
-        parent::__construct($database);
-        $this->tableName = 'addons';
-        $this->entityClass = Addon::class;
-    }
-
     /**
-     * Find addon by slug
+     * Konstruktor
      * 
-     * @param string $slug
-     * @return Addon|null
+     * @param EntityManagerInterface $entityManager
+     */
+    public function __construct(EntityManagerInterface $entityManager)
+    {
+        parent::__construct($entityManager, Addon::class);
+    }
+    
+    /**
+     * Vytvoří typovanou kolekci doplňků
+     * 
+     * @param array<Addon> $entities Pole entit
+     * @return Collection<Addon> Typovaná kolekce
+     */
+    protected function createCollection(array $entities): Collection
+    {
+        return new AddonCollection($entities);
+    }
+    
+    /**
+     * {@inheritDoc}
      */
     public function findBySlug(string $slug): ?Addon
     {
-        /** @var Addon|null */
         return $this->findOneBy(['slug' => $slug]);
     }
-
+    
     /**
-     * Find addons by category
-     * 
-     * @param int $categoryId
-     * @param int $page
-     * @param int $itemsPerPage
-     * @return PaginatedCollection<Addon>
-     */
-    public function findByCategory(int $categoryId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
-    {
-        return $this->findWithPagination(['category_id' => $categoryId], $page, $itemsPerPage, 'name', 'ASC');
-    }
-
-    /**
-     * Find addons in a category and all its subcategories
-     * 
-     * @param int $categoryId
-     * @param int $page
-     * @param int $itemsPerPage
-     * @return PaginatedCollection<Addon>
-     */
-    public function findByCategoryRecursive(int $categoryId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
-    {
-        // Get the category repository
-        $categoryRepository = new CategoryRepository($this->database);
-        
-        // Get all subcategories including the parent category
-        $subcategories = $categoryRepository->findAllSubcategoriesRecursive($categoryId);
-        $categoryIds = [];
-        
-        foreach ($subcategories as $category) {
-            $categoryIds[] = $category->id;
-        }
-        
-        $categoryIds[] = $categoryId; // Include the parent category
-        
-        // Find addons in all categories
-        return $this->findWithPagination(['category_id' => $categoryIds], $page, $itemsPerPage, 'name', 'ASC');
-    }
-
-    /**
-     * Find addons by author
-     * 
-     * @param int $authorId
-     * @param int $page
-     * @param int $itemsPerPage
-     * @return PaginatedCollection<Addon>
+     * {@inheritDoc}
      */
     public function findByAuthor(int $authorId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        return $this->findWithPagination(['author_id' => $authorId], $page, $itemsPerPage, 'name', 'ASC');
-    }
+        $qb = $this->createQueryBuilder('a')
+            ->andWhere('a.author = :author')
+            ->setParameter('author', $this->entityManager->getReference(Author::class, $authorId))
+            ->orderBy('a.name', 'ASC');
 
+        return $this->paginate($qb, $page, $itemsPerPage);
+    }
+    
     /**
-     * Find popular addons
+     * {@inheritDoc}
+     */
+    public function findByCategory(int $categoryId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    {
+        $qb = $this->createQueryBuilder('a')
+            ->andWhere('a.category = :category')
+            ->setParameter('category', $this->entityManager->getReference(Category::class, $categoryId))
+            ->orderBy('a.name', 'ASC');
+
+        return $this->paginate($qb, $page, $itemsPerPage);
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    public function findByCategoryRecursive(int $categoryId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    {
+        // Získat všechny podkategorie
+        $categoryIds = [$categoryId];
+        $this->findAllSubcategoryIds($categoryId, $categoryIds);
+        
+        // Vyhledat doplňky ve všech kategoriích
+        $qb = $this->createQueryBuilder('a')
+            ->andWhere('a.category IN (:categories)')
+            ->setParameter('categories', array_map(
+                fn($id) => $this->entityManager->getReference(Category::class, $id),
+                $categoryIds
+            ))
+            ->orderBy('a.name', 'ASC');
+
+        return $this->paginate($qb, $page, $itemsPerPage);
+    }
+    
+    /**
+     * Pomocná metoda pro rekurzivní hledání ID všech podkategorií
      * 
-     * @param int $limit
-     * @return Collection<Addon>
+     * @param int $parentId ID rodičovské kategorie
+     * @param array &$categoryIds Reference na pole, kam se ukládají ID kategorií
+     */
+    private function findAllSubcategoryIds(int $parentId, array &$categoryIds): void
+    {
+        $qb = $this->entityManager->createQueryBuilder();
+        $subcategories = $qb->select('c.id')
+            ->from(Category::class, 'c')
+            ->where('c.parent = :parent')
+            ->setParameter('parent', $this->entityManager->getReference(Category::class, $parentId))
+            ->getQuery()
+            ->getArrayResult();
+        
+        foreach ($subcategories as $subcategory) {
+            $subId = $subcategory['id'];
+            $categoryIds[] = $subId;
+            $this->findAllSubcategoryIds($subId, $categoryIds);
+        }
+    }
+    
+    /**
+     * {@inheritDoc}
      */
     public function findPopular(int $limit = 10): Collection
     {
-        $rows = $this->findAll()->order('downloads_count DESC')->limit($limit);
-        $addons = [];
-        
-        foreach ($rows as $row) {
-            $addons[] = Addon::fromArray($row->toArray());
-        }
-        
-        return new Collection($addons);
-    }
+        $addons = $this->createQueryBuilder('a')
+            ->orderBy('a.downloads_count', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
 
+        return $this->createCollection($addons);
+    }
+    
     /**
-     * Find top rated addons
-     * 
-     * @param int $limit
-     * @return Collection<Addon>
+     * {@inheritDoc}
      */
     public function findTopRated(int $limit = 10): Collection
     {
-        $rows = $this->findAll()->order('rating DESC')->limit($limit);
-        $addons = [];
-        
-        foreach ($rows as $row) {
-            $addons[] = Addon::fromArray($row->toArray());
-        }
-        
-        return new Collection($addons);
-    }
+        $addons = $this->createQueryBuilder('a')
+            ->where('a.rating > 0') // Jen doplňky s hodnocením
+            ->orderBy('a.rating', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
 
+        return $this->createCollection($addons);
+    }
+    
     /**
-     * Find newest addons
-     * 
-     * @param int $limit
-     * @return Collection<Addon>
+     * {@inheritDoc}
      */
     public function findNewest(int $limit = 10): Collection
     {
-        $rows = $this->findAll()->order('created_at DESC')->limit($limit);
-        $addons = [];
-        
-        foreach ($rows as $row) {
-            $addons[] = Addon::fromArray($row->toArray());
+        $addons = $this->createQueryBuilder('a')
+            ->orderBy('a.created_at', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult();
+
+        return $this->createCollection($addons);
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    public function findSimilarAddons(int $addonId, int $limit = 5): Collection
+    {
+        $addon = $this->find($addonId);
+        if (!$addon) {
+            return $this->createCollection([]);
         }
         
-        return new Collection($addons);
+        $category = $addon->getCategory();
+        $tags = $addon->getTags();
+        
+        $qb = $this->createQueryBuilder('a')
+            ->where('a.id != :addonId')
+            ->setParameter('addonId', $addonId);
+        
+        // Pokud má doplněk tagy, použít je pro hledání podobných
+        if (count($tags) > 0) {
+            $qb->join('a.tags', 't')
+               ->andWhere('t IN (:tags)')
+               ->andWhere('a.category = :category')
+               ->setParameter('tags', $tags)
+               ->setParameter('category', $category)
+               ->orderBy('a.downloads_count', 'DESC')
+               ->groupBy('a.id')
+               ->setMaxResults($limit);
+               
+            // Optimalizace - přidání počtu shodných tagů
+            $qb->addSelect('COUNT(t.id) AS HIDDEN tagCount')
+               ->having('tagCount > 0')
+               ->orderBy('tagCount', 'DESC')
+               ->addOrderBy('a.downloads_count', 'DESC');
+        } else {
+            // Jinak jen použít kategorii
+            $qb->andWhere('a.category = :category')
+               ->setParameter('category', $category)
+               ->orderBy('a.downloads_count', 'DESC')
+               ->setMaxResults($limit);
+        }
+        
+        $similarAddons = $qb->getQuery()->getResult();
+        
+        return $this->createCollection($similarAddons);
     }
-
+    
     /**
-     * Search addons by keyword
-     * 
-     * @param string $query
-     * @param int $page
-     * @param int $itemsPerPage
-     * @return PaginatedCollection<Addon>
+     * {@inheritDoc}
      */
     public function search(string $query, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $selection = $this->getTable()
-            ->where('name LIKE ? OR description LIKE ?', 
-                "%{$query}%", "%{$query}%");
-        
-        $count = $selection->count();
-        $pages = (int) ceil($count / $itemsPerPage);
-        
-        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
-        
-        $items = [];
-        foreach ($selection as $row) {
-            $items[] = Addon::fromArray($row->toArray());
+        if (empty(trim($query))) {
+            // Prázdný dotaz - vrátíme prázdný výsledek
+            return new PaginatedCollection(
+                $this->createCollection([]),
+                0,
+                $page,
+                $itemsPerPage,
+                0
+            );
         }
         
-        $collection = new Collection($items);
+        $qb = $this->createQueryBuilder('a');
         
-        return new PaginatedCollection(
-            $collection,
-            $count,
-            $page,
-            $itemsPerPage,
-            $pages
-        );
+        // Rozdělit dotaz na klíčová slova
+        $keywords = preg_split('/\s+/', trim($query));
+        
+        // Vytvořit OR podmínky pro hledání v názvu a popisu
+        $orExpressions = $qb->expr()->orX();
+        
+        foreach ($keywords as $keyword) {
+            $orExpressions->add($qb->expr()->like('a.name', ':keyword_' . md5($keyword)));
+            $orExpressions->add($qb->expr()->like('a.description', ':keyword_' . md5($keyword)));
+            $qb->setParameter('keyword_' . md5($keyword), '%' . $keyword . '%');
+        }
+        
+        $qb->andWhere($orExpressions)
+           ->orderBy('a.downloads_count', 'DESC');
+        
+        return $this->paginate($qb, $page, $itemsPerPage);
     }
-
+    
     /**
-     * Increment addon download count
-     * 
-     * @param int $id
-     * @return int
+     * {@inheritDoc}
      */
-    public function incrementDownloadCount(int $id): int
+    public function advancedSearch(string $query, array $fields = ['name', 'description'], array $filters = [], int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        return $this->getTable()->where('id', $id)->update([
-            'downloads_count' => new \Nette\Database\SqlLiteral('downloads_count + 1')
-        ]);
-    }
-
-    /**
-     * Update addon rating
-     * 
-     * @param int $id
-     */
-    public function updateRating(int $id): void
-    {
-        $averageRating = $this->database->table('addon_reviews')
-            ->where('addon_id', $id)
-            ->select('AVG(rating) AS average_rating')
-            ->fetch();
-
-        if ($averageRating && $averageRating->average_rating) {
-            $addon = $this->findById($id);
-            if ($addon) {
-                $addon->rating = (float) $averageRating->average_rating;
-                $this->save($addon);
+        $qb = $this->createQueryBuilder('a');
+        
+        // Aplikovat filtry
+        $qb = $this->applyFilters($qb, $filters);
+        
+        // Pokud je zadaný vyhledávací dotaz, aplikovat jej
+        if (!empty(trim($query))) {
+            $keywords = preg_split('/\s+/', trim($query));
+            $orExpressions = $qb->expr()->orX();
+            
+            foreach ($keywords as $keyword) {
+                foreach ($fields as $field) {
+                    if (property_exists(Addon::class, $field)) {
+                        $orExpressions->add($qb->expr()->like('a.' . $field, ':keyword_' . md5($keyword . $field)));
+                        $qb->setParameter('keyword_' . md5($keyword . $field), '%' . $keyword . '%');
+                    }
+                }
+            }
+            
+            if ($orExpressions->count() > 0) {
+                $qb->andWhere($orExpressions);
             }
         }
-    }
-
-    /**
-     * Create addon with related data
-     * 
-     * @param Addon $addon
-     * @param array $screenshots
-     * @param array $tagIds
-     * @return int
-     */
-    public function createWithRelated(Addon $addon, array $screenshots = [], array $tagIds = []): int
-    {
-        // Generate slug if not provided
-        if (empty($addon->slug)) {
-            $addon->slug = Strings::webalize($addon->name);
+        
+        // Řazení: pokud je zadaný dotaz, řadíme podle relevance (stažení)
+        // jinak podle zadaného řazení ve filtrech nebo výchozí podle názvu
+        if (!empty($query)) {
+            $qb->orderBy('a.downloads_count', 'DESC');
+        } elseif (isset($filters['sort_by']) && isset($filters['sort_dir'])) {
+            $qb->orderBy('a.' . $filters['sort_by'], $filters['sort_dir']);
+        } else {
+            $qb->orderBy('a.name', 'ASC');
         }
         
-        // Set timestamps
-        $addon->created_at = new \DateTime();
-        $addon->updated_at = new \DateTime();
+        return $this->paginate($qb, $page, $itemsPerPage);
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    public function incrementDownloadCount(int $id, ?string $ipAddress = null, ?string $userAgent = null): int
+    {
+        $addon = $this->find($id);
+        if (!$addon) {
+            return 0;
+        }
         
-        // Begin transaction
-        $this->database->beginTransaction();
+        $this->entityManager->beginTransaction();
         
         try {
-            // Insert addon
-            $addonId = $this->save($addon);
+            // Zvýšit počítadlo stažení
+            $addon->incrementDownloadsCount();
             
-            // Insert screenshots
-            if (!empty($screenshots)) {
-                foreach ($screenshots as $index => $screenshot) {
-                    $screenshot->addon_id = $addonId;
-                    $screenshot->sort_order = $index;
-                    $this->database->table('screenshots')->insert($screenshot->toArray());
-                }
+            // Přidat záznam do tabulky downloads_log (pokud existuje)
+            if ($ipAddress !== null) {
+                $conn = $this->entityManager->getConnection();
+                $now = new \DateTime();
+                
+                $conn->insert('downloads_log', [
+                    'addon_id' => $id,
+                    'created_at' => $now->format('Y-m-d H:i:s'),
+                    'ip_address' => $ipAddress,
+                    'user_agent' => $userAgent
+                ]);
             }
             
-            // Insert tags
-            if (!empty($tagIds)) {
-                foreach ($tagIds as $tagId) {
-                    $addonTag = new AddonTag();
-                    $addonTag->addon_id = $addonId;
-                    $addonTag->tag_id = $tagId;
-                    $this->database->table('addon_tags')->insert($addonTag->toArray());
-                }
-            }
+            $this->entityManager->flush();
+            $this->entityManager->commit();
             
-            // Commit transaction
-            $this->database->commit();
-            
-            return $addonId;
+            return 1;
         } catch (\Exception $e) {
-            // Rollback on error
-            $this->database->rollBack();
+            $this->entityManager->rollback();
             throw $e;
         }
     }
-
-/**
- * Update addon with related data
- * 
- * @param Addon $addon
- * @param array $screenshots
- * @param array $tagIds
- * @return int
- */
-public function updateWithRelated(Addon $addon, array $screenshots = [], array $tagIds = []): int
-{
-    // Ensure addon exists
-    if (!$this->exists($addon->id)) {
-        throw new \Exception("Addon with ID {$addon->id} does not exist.");
-    }
-    
-    // Handle file uploads (if any)
-    if (isset($addon->icon_url) && $addon->icon_url instanceof FileUpload && $addon->icon_url->isOk()) {
-        $iconPath = $this->processImageUpload($addon->icon_url, 'icons');
-        $addon->icon_url = $iconPath;
-    }
-    
-    if (isset($addon->fanart_url) && $addon->fanart_url instanceof FileUpload && $addon->fanart_url->isOk()) {
-        $fanartPath = $this->processImageUpload($addon->fanart_url, 'fanart');
-        $addon->fanart_url = $fanartPath;
-    }
-    
-    // Update slug if name changed
-    if (empty($addon->slug)) {
-        $addon->slug = Strings::webalize($addon->name);
-    }
-    
-    // Set updated timestamp
-    $addon->updated_at = new \DateTime();
-    
-    // Begin transaction
-    $this->database->beginTransaction();
-    
-    try {
-        // Update addon
-        $this->save($addon);
-        
-        // Handle screenshots
-        if (!empty($screenshots)) {
-            // Remove existing screenshots
-            $this->database->table('screenshots')->where('addon_id', $addon->id)->delete();
-            
-            // Add new screenshots
-            foreach ($screenshots as $index => $screenshot) {
-                $screenshot->addon_id = $addon->id;
-                $screenshot->sort_order = $index;
-                $this->database->table('screenshots')->insert($screenshot->toArray());
-            }
-        }
-        
-        // Handle tags
-        if (!empty($tagIds)) {
-            // Remove existing tag associations
-            $this->database->table('addon_tags')->where('addon_id', $addon->id)->delete();
-            
-            // Add new tag associations
-            foreach ($tagIds as $tagId) {
-                $addonTag = new AddonTag();
-                $addonTag->addon_id = $addon->id;
-                $addonTag->tag_id = $tagId;
-                $this->database->table('addon_tags')->insert($addonTag->toArray());
-            }
-        }
-        
-        // Commit transaction
-        $this->database->commit();
-        
-        return $addon->id;
-    } catch (\Exception $e) {
-        // Rollback on error
-        $this->database->rollBack();
-        throw $e;
-    }
-}
     
     /**
-     * Get addon with related data
-     * 
-     * @param int $id
-     * @return array|null
+     * {@inheritDoc}
+     */
+    public function updateRating(int $id): void
+    {
+        $addon = $this->find($id);
+        if (!$addon) {
+            return;
+        }
+        
+        $qb = $this->entityManager->createQueryBuilder();
+        $result = $qb->select('COUNT(r.id) as reviewCount, AVG(r.rating) as avgRating')
+            ->from('App\Entity\AddonReview', 'r')
+            ->where('r.addon = :addon')
+            ->setParameter('addon', $addon)
+            ->getQuery()
+            ->getSingleResult();
+        
+        $reviewCount = $result['reviewCount'] ?? 0;
+        $avgRating = $result['avgRating'] ?? 0;
+        
+        if ($reviewCount > 0) {
+            $addon->setRating((float)$avgRating);
+            $this->entityManager->flush();
+        }
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    public function createWithRelated(Addon $addon, array $screenshots = [], array $tagIds = []): int
+    {
+        $this->validateAddon($addon);
+        
+        $this->entityManager->beginTransaction();
+        
+        try {
+            // Nastavit časová razítka
+            if (empty($addon->getCreatedAt())) {
+                $addon->setCreatedAt(new \DateTime());
+            }
+            if (empty($addon->getUpdatedAt())) {
+                $addon->setUpdatedAt(new \DateTime());
+            }
+            
+            // Uložit doplněk
+            $this->entityManager->persist($addon);
+            
+            // Přidat screenshoty
+            foreach ($screenshots as $screenshot) {
+                if ($screenshot instanceof Screenshot) {
+                    $screenshot->setAddon($addon);
+                    $addon->addScreenshot($screenshot);
+                    $this->entityManager->persist($screenshot);
+                }
+            }
+            
+            // Přidat tagy
+            foreach ($tagIds as $tagId) {
+                $tag = $this->entityManager->getReference(Tag::class, $tagId);
+                $addon->addTag($tag);
+            }
+            
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+            
+            return $addon->getId();
+        } catch (\Exception $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
+    }
+    
+    /**
+     * {@inheritDoc}
+     */
+    public function updateWithRelated(Addon $addon, array $screenshots = [], array $tagIds = []): int
+    {
+        // Kontrola existence
+        if (!$this->exists($addon->getId())) {
+            throw new \Exception("Doplněk s ID {$addon->getId()} neexistuje.");
+        }
+        
+        $this->validateAddon($addon);
+        
+        $this->entityManager->beginTransaction();
+        
+        try {
+            // Aktualizovat časové razítko
+            $addon->setUpdatedAt(new \DateTime());
+            
+            // Odstranit existující screenshoty
+            foreach ($addon->getScreenshots() as $screenshot) {
+                $addon->removeScreenshot($screenshot);
+                $this->entityManager->remove($screenshot);
+            }
+            
+            // Přidat nové screenshoty
+            foreach ($screenshots as $screenshot) {
+                if ($screenshot instanceof Screenshot) {
+                    $screenshot->setAddon($addon);
+                    $addon->addScreenshot($screenshot);
+                    $this->entityManager->persist($screenshot);
+                }
+            }
+            
+            // Odstranit existující tagy
+            foreach ($addon->getTags() as $tag) {
+                $addon->removeTag($tag);
+            }
+            
+            // Přidat nové tagy
+            foreach ($tagIds as $tagId) {
+                $tag = $this->entityManager->getReference(Tag::class, $tagId);
+                $addon->addTag($tag);
+            }
+            
+            $this->entityManager->persist($addon);
+            $this->entityManager->flush();
+            $this->entityManager->commit();
+            
+            return $addon->getId();
+        } catch (\Exception $e) {
+            $this->entityManager->rollback();
+            throw $e;
+        }
+    }
+    
+    /**
+     * {@inheritDoc}
      */
     public function getWithRelated(int $id): ?array
     {
-        $addon = $this->findById($id);
+        $addon = $this->find($id);
         
         if (!$addon) {
             return null;
         }
         
-        // Get author
-        $authorRow = $this->database->table('authors')
-            ->get($addon->author_id);
-        $author = $authorRow ? \App\Model\Author::fromArray($authorRow->toArray()) : null;
+        // Eager načtení všech souvisejících entit
+        $author = $addon->getAuthor();
+        $category = $addon->getCategory();
+        $screenshots = $addon->getScreenshots()->toArray();
+        $tags = $addon->getTags()->toArray();
         
-        // Get category
-        $categoryRow = $this->database->table('categories')
-            ->get($addon->category_id);
-        $category = $categoryRow ? \App\Model\Category::fromArray($categoryRow->toArray()) : null;
-        
-        // Get screenshots
-        $screenshotRows = $this->database->table('screenshots')
-            ->where('addon_id', $id)
-            ->order('sort_order ASC');
-        
-        $screenshots = [];
-        foreach ($screenshotRows as $screenshotRow) {
-            $screenshots[] = \App\Model\Screenshot::fromArray($screenshotRow->toArray());
-        }
-        
-       // Get tags
-        $tagIds = $this->database->table('addon_tags')
-            ->where('addon_id', $id)
-            ->select('tag_id');
-
-        $tagRows = $this->database->table('tags')
-            ->where('id IN ?', $tagIds);
-
-        $tags = [];
-        foreach ($tagRows as $tagRow) {
-            $tags[] = \App\Model\Tag::fromArray($tagRow->toArray());
-            }
-        
-        // Get reviews
-        $reviewRows = $this->database->table('addon_reviews')
-            ->where('addon_id', $id)
-            ->order('created_at DESC');
-        
-        $reviews = [];
-        foreach ($reviewRows as $reviewRow) {
-            $reviews[] = \App\Model\AddonReview::fromArray($reviewRow->toArray());
-        }
+        // Získání recenzí
+        $reviews = $this->entityManager->getRepository('App\Entity\AddonReview')
+            ->findBy(['addon' => $addon], ['created_at' => 'DESC']);
         
         return [
             'addon' => $addon,
@@ -420,252 +494,124 @@ public function updateWithRelated(Addon $addon, array $screenshots = [], array $
             'reviews' => $reviews
         ];
     }
-
+    
     /**
-     * Find addons with advanced filtering and sorting
-     * 
-     * @param array $filters Filtering criteria
-     * @param string $sortBy Field to sort by
-     * @param string $sortDir Sort direction (ASC or DESC)
-     * @param int $page Page number
-     * @param int $itemsPerPage Items per page
-     * @return PaginatedCollection<Addon>
+     * {@inheritDoc}
      */
-    public function findWithFilters(array $filters = [], string $sortBy = 'name', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    public function getDownloadsByAddon(int $limit = 10, ?\DateTime $startDate = null): array
     {
-        $filterQuery = new AddonFilterQuery(
-            $this->database,
-            $filters,
-            $sortBy,
-            $sortDir,
-            $page,
-            $itemsPerPage
-        );
+        $conn = $this->entityManager->getConnection();
+        $qb = $conn->createQueryBuilder();
         
-        return $filterQuery->execute();
-    }
-
-    /**
-     * Find similar addons based on tags and category
-     * 
-     * @param int $addonId
-     * @param int $limit
-     * @return Collection<Addon>
-     */
-    public function findSimilarAddons(int $addonId, int $limit = 5): Collection
-    {
-        $addon = $this->findById($addonId);
-        if (!$addon) {
-            return new Collection();
+        $qb->select('a.id', 'a.name', 'a.slug', 'COUNT(dl.id) as download_count')
+           ->from('downloads_log', 'dl')
+           ->join('dl', 'addons', 'a', 'dl.addon_id = a.id');
+        
+        if ($startDate) {
+            $qb->where('dl.created_at >= :startDate')
+               ->setParameter('startDate', $startDate->format('Y-m-d H:i:s'));
         }
-
-        // Get the addon's tags
-        $addonTags = $this->database->table('addon_tags')
-            ->where('addon_id', $addonId)
-            ->select('tag_id');
-
-        $tagIds = [];
-        foreach ($addonTags as $tag) {
-            $tagIds[] = $tag->tag_id;
-        }
-
-        // If no tags found, fallback to category only
-        if (empty($tagIds)) {
-            $result = $this->findWithFilters([
-                'category_id' => $addon->category_id,
-                'id != ?' => $addonId
-            ], 'downloads_count', 'DESC', 1, $limit);
-            
-            return $result->getItems();
-        }
-
-        // Find addons with similar tags and same category
-        $query = "
-            SELECT s.*
-            FROM (
-                SELECT a.*, 
-                        COUNT(DISTINCT at.tag_id) AS matching_tags,
-                        (a.category_id = ?) AS same_category
-            FROM addons a
-                JOIN addon_tags at ON a.id = at.addon_id
-                WHERE at.tag_id IN (?) AND a.id != ?
-                GROUP BY a.id
-                ) AS s
-                ORDER BY (s.same_category * 2 + s.matching_tags) DESC, s.downloads_count DESC
-                LIMIT ?
-                ";
-
-        $result = $this->database->query($query, $addon->category_id, $tagIds, $addonId, $limit);
-
-        $similarAddons = [];
-        foreach ($result as $row) {
-            $similarAddons[] = Addon::fromArray([
-                'id' => $row->id,
-                'name' => $row->name,
-                'slug' => $row->slug,
-                'description' => $row->description,
-                'version' => $row->version,
-                'author_id' => $row->author_id,
-                'category_id' => $row->category_id,
-                'repository_url' => $row->repository_url,
-                'download_url' => $row->download_url,
-                'icon_url' => $row->icon_url,
-                'fanart_url' => $row->fanart_url,
-                'kodi_version_min' => $row->kodi_version_min,
-                'kodi_version_max' => $row->kodi_version_max,
-                'downloads_count' => $row->downloads_count,
-                'rating' => $row->rating,
-                'created_at' => $row->created_at,
-                'updated_at' => $row->updated_at
-            ]);
-        }
-
-        return new Collection($similarAddons);
+        
+        $qb->groupBy('a.id', 'a.name', 'a.slug')
+           ->orderBy('download_count', 'DESC')
+           ->setMaxResults($limit);
+        
+        $stmt = $qb->executeQuery();
+        $result = $stmt->fetchAllAssociative();
+        
+        return $result;
     }
     
     /**
-     * Comprehensive search with relevance sorting
-     * 
-     * @param string $query The search query
-     * @param array $fields Fields to search in (default: name, description)
-     * @param array $filters Additional filters to apply
-     * @param int $page Page number
-     * @param int $itemsPerPage Items per page
-     * @return PaginatedCollection<Addon>
+     * {@inheritDoc}
      */
-    public function advancedSearch(string $query, array $fields = ['name', 'description'], array $filters = [], int $page = 1, int $itemsPerPage = 10): PaginatedCollection
+    public function getDownloadsByHourOfDay(?\DateTime $startDate = null): array
     {
-        $searchQuery = new AddonAdvancedSearchQuery(
-            $this->database,
-            $query,
-            $fields,
-            $filters,
-            $page,
-            $itemsPerPage
-        );
+        $conn = $this->entityManager->getConnection();
+        $qb = $conn->createQueryBuilder();
         
-        return $searchQuery->execute();
-    }
-    
-    /**
-     * Perform full-text search
-     * 
-     * @param string $query Search query
-     * @param array $fields Fields to search in
-     * @param int $page Page number
-     * @param int $itemsPerPage Items per page
-     * @return PaginatedCollection<Addon>
-     */
-    public function fullTextSearch(string $query, array $fields = ['name', 'description'], int $page = 1, int $itemsPerPage = 10): PaginatedCollection
-    {
-        // Pokud je dotaz prázdný, vrátit prázdný výsledek
-        if (empty(trim($query))) {
-            return new PaginatedCollection(
-                new Collection([]),
-                0,
-                $page,
-                $itemsPerPage,
-                0
-            );
+        $qb->select('HOUR(dl.created_at) as hour', 'COUNT(*) as download_count')
+           ->from('downloads_log', 'dl');
+        
+        if ($startDate) {
+            $qb->where('dl.created_at >= :startDate')
+               ->setParameter('startDate', $startDate->format('Y-m-d H:i:s'));
         }
         
-        // Pro SQLite implementujeme jednoduché vyhledávání založené na LIKE
-        // V produkčním prostředí s MySQL byste mohli použít MATCH AGAINST
-        $selection = $this->getTable();
-        $conditions = [];
-        $params = [];
+        $qb->groupBy('hour')
+           ->orderBy('hour', 'ASC');
         
-        // Rozdělit dotaz na klíčová slova
-        $keywords = preg_split('/\s+/', trim($query));
+        $stmt = $qb->executeQuery();
+        $data = $stmt->fetchAllAssociative();
         
-        foreach ($fields as $field) {
-            foreach ($keywords as $keyword) {
-                $conditions[] = "$field LIKE ?";
-                $params[] = "%{$keyword}%";
+        // Zajištění, že máme data pro všechny hodiny (0-23)
+        $result = array_fill(0, 24, ['hour' => 0, 'download_count' => 0]);
+        
+        foreach ($data as $row) {
+            $hour = (int)$row['hour'];
+            if ($hour >= 0 && $hour < 24) {
+                $result[$hour] = [
+                    'hour' => $hour,
+                    'download_count' => (int)$row['download_count']
+                ];
             }
         }
         
-        if (!empty($conditions)) {
-            $selection->where(implode(' OR ', $conditions), ...$params);
-        }
-        
-        // Spočítat celkový počet odpovídajících záznamů
-        $count = $selection->count();
-        $pages = (int) ceil($count / $itemsPerPage);
-        
-        // Aplikovat stránkování
-        $selection->limit($itemsPerPage, ($page - 1) * $itemsPerPage);
-        
-        // Převést na entity
-        $items = [];
-        foreach ($selection as $row) {
-            $items[] = Addon::fromArray($row->toArray());
-        }
-        
-        // Vytvořit a vrátit typovanou kolekci s paginací
-        return new PaginatedCollection(
-            new Collection($items),
-            $count,
-            $page,
-            $itemsPerPage,
-            $pages
-        );
+        return array_values($result);
     }
-
+    
     /**
-     * Get addon statistics over time
-     * 
-     * @param string $interval 'day', 'week', 'month', or 'year'
-     * @param int $limit Number of intervals to return
-     * @param string $metric 'downloads', 'ratings', or 'addons'
-     * @return array
+     * {@inheritDoc}
      */
     public function getStatisticsOverTime(string $interval = 'month', int $limit = 12, string $metric = 'downloads'): array
     {
         $result = [];
         $now = new \DateTime();
-        
-        // Define SQL date format based on interval
-        switch ($interval) {
-            case 'day':
-                $sqlFormat = '%Y-%m-%d';
-                $dateFormat = 'Y-m-d';
-                $dateInterval = 'P1D';
-                break;
-            case 'week':
-                $sqlFormat = '%Y-%u'; // Year and week number
-                $dateFormat = 'Y-W';
-                $dateInterval = 'P1W';
-                break;
-            case 'month':
-                $sqlFormat = '%Y-%m';
-                $dateFormat = 'Y-m';
-                $dateInterval = 'P1M';
-                break;
-            case 'year':
-                $sqlFormat = '%Y';
-                $dateFormat = 'Y';
-                $dateInterval = 'P1Y';
-                break;
-            default:
-                $sqlFormat = '%Y-%m';
-                $dateFormat = 'Y-m';
-                $dateInterval = 'P1M';
-        }
-        
-        // Generate time periods
-        $periods = [];
         $currentDate = clone $now;
         
+        // Definice formátu data podle intervalu
+        switch ($interval) {
+            case 'day':
+                $dateFormat = 'Y-m-d';
+                $dateInterval = 'P1D';
+                $dbFormat = '%Y-%m-%d';
+                break;
+            case 'week':
+                $dateFormat = 'Y-W';
+                $dateInterval = 'P1W';
+                $dbFormat = '%Y-%u';
+                break;
+            case 'month':
+                $dateFormat = 'Y-m';
+                $dateInterval = 'P1M';
+                $dbFormat = '%Y-%m';
+                break;
+            case 'year':
+                $dateFormat = 'Y';
+                $dateInterval = 'P1Y';
+                $dbFormat = '%Y';
+                break;
+            default:
+                $dateFormat = 'Y-m';
+                $dateInterval = 'P1M';
+                $dbFormat = '%Y-%m';
+        }
+        
+        // Nastavení startovního data pro dotaz
+        $startDate = clone $now;
+        $startDate->sub(new \DateInterval(str_replace('1', (string)($limit+1), $dateInterval)));
+        
+        // Generování časových period
+        $periods = [];
         for ($i = 0; $i < $limit; $i++) {
             $periods[] = $currentDate->format($dateFormat);
             $currentDate->sub(new \DateInterval($dateInterval));
         }
         
-        // Sort periods chronologically
+        // Seřadit periody chronologicky
         $periods = array_reverse($periods);
         
-        // Initialize result structure
+        // Inicializace struktury výsledku
         foreach ($periods as $period) {
             $result[$period] = [
                 'period' => $period,
@@ -673,80 +619,102 @@ public function updateWithRelated(Addon $addon, array $screenshots = [], array $
             ];
         }
         
-        // Query the database based on the requested metric
+        // Získání dat podle požadované metriky
+        $conn = $this->entityManager->getConnection();
+        
         if ($metric === 'addons') {
-            // Count new addons per period
-            $query = $this->database->query("
-                SELECT DATE_FORMAT(created_at, '$sqlFormat') AS period, COUNT(*) AS count
-                FROM {$this->tableName}
-                WHERE created_at >= ?
+            // Počet nových doplňků v každém období
+            $query = $conn->prepare("
+                SELECT DATE_FORMAT(a.created_at, :format) AS period, COUNT(a.id) AS count
+                FROM addons a
+                WHERE a.created_at >= :start_date
                 GROUP BY period
                 ORDER BY period
-            ", $currentDate->format('Y-m-d H:i:s'));
+            ");
             
-            foreach ($query as $row) {
-                if (isset($result[$row->period])) {
-                    $result[$row->period]['value'] = (int)$row->count;
+            $query->bindValue('format', $dbFormat);
+            $query->bindValue('start_date', $startDate->format('Y-m-d H:i:s'));
+            $stmt = $query->executeQuery();
+            $data = $stmt->fetchAllAssociative();
+            
+            foreach ($data as $row) {
+                if (isset($result[$row['period']])) {
+                    $result[$row['period']]['value'] = (int)$row['count'];
                 }
             }
         } elseif ($metric === 'ratings') {
-            // Average ratings per period
-            $query = $this->database->query("
-                SELECT DATE_FORMAT(ar.created_at, '$sqlFormat') AS period, AVG(ar.rating) AS avg_rating
+            // Průměrné hodnocení v každém období
+            $query = $conn->prepare("
+                SELECT DATE_FORMAT(ar.created_at, :format) AS period, AVG(ar.rating) AS avg_rating
                 FROM addon_reviews ar
-                WHERE ar.created_at >= ?
+                WHERE ar.created_at >= :start_date
                 GROUP BY period
                 ORDER BY period
-            ", $currentDate->format('Y-m-d H:i:s'));
+            ");
             
-            foreach ($query as $row) {
-                if (isset($result[$row->period])) {
-                    $result[$row->period]['value'] = round((float)$row->avg_rating, 2);
+            $query->bindValue('format', $dbFormat);
+            $query->bindValue('start_date', $startDate->format('Y-m-d H:i:s'));
+            $stmt = $query->executeQuery();
+            $data = $stmt->fetchAllAssociative();
+            
+            foreach ($data as $row) {
+                if (isset($result[$row['period']])) {
+                    $result[$row['period']]['value'] = round((float)$row['avg_rating'], 2);
                 }
             }
         } else {
-            // Download count changes are not directly tracked over time in this schema
-            // For demo purposes, we'll generate random data (in a real app, you'd have a downloads log table)
-            foreach ($result as $period => &$data) {
-                $data['value'] = rand(50, 500); // Random download count
+            // Počet stažení v každém období
+            $query = $conn->prepare("
+                SELECT DATE_FORMAT(dl.created_at, :format) AS period, COUNT(*) AS download_count
+                FROM downloads_log dl
+                WHERE dl.created_at >= :start_date
+                GROUP BY period
+                ORDER BY period
+            ");
+            
+            $query->bindValue('format', $dbFormat);
+            $query->bindValue('start_date', $startDate->format('Y-m-d H:i:s'));
+            $stmt = $query->executeQuery();
+            $data = $stmt->fetchAllAssociative();
+            
+            foreach ($data as $row) {
+                if (isset($result[$row['period']])) {
+                    $result[$row['period']]['value'] = (int)$row['download_count'];
+                }
             }
         }
         
         return array_values($result);
     }
-
+    
     /**
-     * Get addon distribution by category
-     * 
-     * @return array
+     * {@inheritDoc}
      */
     public function getAddonDistributionByCategory(): array
     {
-        $result = $this->database->query("
-            SELECT c.id, c.name, COUNT(a.id) as addon_count
-            FROM categories c
-            LEFT JOIN {$this->tableName} a ON c.id = a.category_id
-            GROUP BY c.id, c.name
-            ORDER BY addon_count DESC
-        ");
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('c.id, c.name, COUNT(a.id) as addon_count')
+           ->from(Category::class, 'c')
+           ->leftJoin('c.addons', 'a')
+           ->groupBy('c.id, c.name')
+           ->orderBy('addon_count', 'DESC');
+        
+        $result = $qb->getQuery()->getResult();
         
         $distribution = [];
-        
         foreach ($result as $row) {
             $distribution[] = [
-                'category_id' => $row->id,
-                'category_name' => $row->name,
-                'addon_count' => (int)$row->addon_count
+                'category_id' => $row['id'],
+                'category_name' => $row['name'],
+                'addon_count' => (int)$row['addon_count']
             ];
         }
         
         return $distribution;
     }
-
+    
     /**
-     * Get rating distribution
-     * 
-     * @return array
+     * {@inheritDoc}
      */
     public function getRatingDistribution(): array
     {
@@ -758,53 +726,212 @@ public function updateWithRelated(Addon $addon, array $screenshots = [], array $
             5 => 0
         ];
         
-        $result = $this->database->query("
+        $conn = $this->entityManager->getConnection();
+        $query = $conn->prepare("
             SELECT rating, COUNT(*) as count
             FROM addon_reviews
             GROUP BY rating
             ORDER BY rating
         ");
         
-        foreach ($result as $row) {
-            $rating = (int)$row->rating;
+        $stmt = $query->executeQuery();
+        $data = $stmt->fetchAllAssociative();
+        
+        foreach ($data as $row) {
+            $rating = (int)$row['rating'];
             if (isset($distribution[$rating])) {
-                $distribution[$rating] = (int)$row->count;
+                $distribution[$rating] = (int)$row['count'];
             }
         }
         
         return $distribution;
     }
-
+    
     /**
-     * Get top authors by download count
-     * 
-     * @param int $limit
-     * @return array
+     * {@inheritDoc}
      */
     public function getTopAuthorsByDownloads(int $limit = 10): array
     {
-        $result = $this->database->query("
-            SELECT au.id, au.name, COUNT(a.id) as addon_count, SUM(a.downloads_count) as total_downloads
-            FROM authors au
-            JOIN {$this->tableName} a ON au.id = a.author_id
-            GROUP BY au.id, au.name
-            ORDER BY total_downloads DESC
-            LIMIT ?
-        ", $limit);
+        $qb = $this->entityManager->createQueryBuilder();
+        $qb->select('au.id, au.name, COUNT(a.id) as addon_count, SUM(a.downloads_count) as total_downloads')
+           ->from(Author::class, 'au')
+           ->join('au.addons', 'a')
+           ->groupBy('au.id, au.name')
+           ->orderBy('total_downloads', 'DESC')
+           ->setMaxResults($limit);
+        
+        $result = $qb->getQuery()->getResult();
         
         $authors = [];
-        
         foreach ($result as $row) {
             $authors[] = [
-                'author_id' => $row->id,
-                'author_name' => $row->name,
-                'addon_count' => (int)$row->addon_count,
-                'total_downloads' => (int)$row->total_downloads
+                'author_id' => $row['id'],
+                'author_name' => $row['name'],
+                'addon_count' => (int)$row['addon_count'],
+                'total_downloads' => (int)$row['total_downloads']
             ];
         }
         
         return $authors;
     }
-
     
+    /**
+     * {@inheritDoc}
+     */
+    public function createFilteredQueryBuilder(array $filters = []): QueryBuilder
+    {
+        $qb = $this->createQueryBuilder('a');
+        return $this->applyFilters($qb, $filters);
+    }
+    
+    /**
+     * Aplikuje filtry na QueryBuilder
+     * 
+     * @param QueryBuilder $qb QueryBuilder pro doplňky
+     * @param array $filters Pole filtrů
+     * @return QueryBuilder Upravený QueryBuilder
+     */
+    protected function applyFilters(QueryBuilder $qb, array $filters): QueryBuilder
+    {
+        foreach ($filters as $key => $value) {
+            if ($value === null || $value === '' || $key === 'sort_by' || $key === 'sort_dir') {
+                continue;
+            }
+            
+            switch ($key) {
+                case 'category_ids':
+                    if (is_array($value) && !empty($value)) {
+                        $categories = array_map(
+                            fn($id) => $this->entityManager->getReference(Category::class, $id),
+                            $value
+                        );
+                        $qb->andWhere('a.category IN (:categories)')
+                           ->setParameter('categories', $categories);
+                    } else if (!is_array($value) && $value) {
+                        $qb->andWhere('a.category = :category')
+                           ->setParameter('category', $this->entityManager->getReference(Category::class, $value));
+                    }
+                    break;
+                
+                case 'author_ids':
+                    if (is_array($value) && !empty($value)) {
+                        $authors = array_map(
+                            fn($id) => $this->entityManager->getReference(Author::class, $id),
+                            $value
+                        );
+                        $qb->andWhere('a.author IN (:authors)')
+                           ->setParameter('authors', $authors);
+                    } else if (!is_array($value) && $value) {
+                        $qb->andWhere('a.author = :author')
+                           ->setParameter('author', $this->entityManager->getReference(Author::class, $value));
+                    }
+                    break;
+                
+                case 'tag_ids':
+                    if (is_array($value) && !empty($value)) {
+                        $tags = array_map(
+                            fn($id) => $this->entityManager->getReference(Tag::class, $id),
+                            $value
+                        );
+                        $qb->join('a.tags', 'tag')
+                           ->andWhere('tag IN (:tags)')
+                           ->setParameter('tags', $tags);
+                    } else if (!is_array($value) && $value) {
+                        $tag = $this->entityManager->getReference(Tag::class, $value);
+                        $qb->join('a.tags', 'tag')
+                           ->andWhere('tag = :tag')
+                           ->setParameter('tag', $tag);
+                    }
+                    break;
+                
+                case 'min_rating':
+                    $qb->andWhere('a.rating >= :minRating')
+                       ->setParameter('minRating', (float)$value);
+                    break;
+                
+                case 'max_rating':
+                    $qb->andWhere('a.rating <= :maxRating')
+                       ->setParameter('maxRating', (float)$value);
+                    break;
+                
+                case 'min_downloads':
+                    $qb->andWhere('a.downloads_count >= :minDownloads')
+                       ->setParameter('minDownloads', (int)$value);
+                    break;
+                
+                case 'max_downloads':
+                    $qb->andWhere('a.downloads_count <= :maxDownloads')
+                       ->setParameter('maxDownloads', (int)$value);
+                    break;
+                
+                case 'kodi_version':
+                    $qb->andWhere('(a.kodi_version_min IS NULL OR a.kodi_version_min <= :kodiVersion)')
+                       ->andWhere('(a.kodi_version_max IS NULL OR a.kodi_version_max >= :kodiVersion)')
+                       ->setParameter('kodiVersion', $value);
+                    break;
+                
+                case 'created_after':
+                    if ($value instanceof \DateTime) {
+                        $qb->andWhere('a.created_at >= :createdAfter')
+                           ->setParameter('createdAfter', $value);
+                    }
+                    break;
+                
+                case 'created_before':
+                    if ($value instanceof \DateTime) {
+                        $qb->andWhere('a.created_at <= :createdBefore')
+                           ->setParameter('createdBefore', $value);
+                    }
+                    break;
+                
+                default:
+                    // Pro standardní pole entity
+                    $reflectionClass = new \ReflectionClass(Addon::class);
+                    if ($reflectionClass->hasProperty($key)) {
+                        $qb->andWhere("a.$key = :$key")
+                           ->setParameter($key, $value);
+                    }
+                    break;
+            }
+        }
+        
+        return $qb;
+    }
+    
+    /**
+     * Validuje doplněk před uložením/aktualizací
+     * 
+     * @param Addon $addon Entity doplňku
+     * @throws \InvalidArgumentException Pokud je doplněk nevalidní
+     */
+    private function validateAddon(Addon $addon): void
+    {
+        // Kontrola verzí
+        if (!empty($addon->getKodiVersionMin()) && !empty($addon->getKodiVersionMax())) {
+            if (version_compare($addon->getKodiVersionMin(), $addon->getKodiVersionMax(), '>')) {
+                throw new \InvalidArgumentException('Minimální verze Kodi nemůže být větší než maximální verze');
+            }
+        }
+        
+        // Kontrola povinných polí
+        if (empty($addon->getName())) {
+            throw new \InvalidArgumentException('Název doplňku je povinný');
+        }
+        
+        if (empty($addon->getVersion())) {
+            throw new \InvalidArgumentException('Verze doplňku je povinná');
+        }
+        
+        if (empty($addon->getDownloadUrl())) {
+            throw new \InvalidArgumentException('URL pro stažení je povinné');
+        }
+        
+        // Kontrola slugu, případně vytvoření z názvu
+        if (empty($addon->getSlug())) {
+        // Použití factory pro vytvoření inflektoru
+        $inflector = \Doctrine\Inflector\InflectorFactory::create()->build();
+        $slug = $inflector->urlize($addon->getName());
+        $addon->setSlug($slug);
 }
+        }
+    }
