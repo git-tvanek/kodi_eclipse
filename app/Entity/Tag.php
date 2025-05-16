@@ -8,9 +8,12 @@ use App\Repository\Doctrine\TagRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 
 #[ORM\Entity(repositoryClass: TagRepository::class)]
 #[ORM\Table(name: 'tags')]
+#[UniqueEntity(fields: ['slug'], message: 'Tento slug je již používán.')]
 class Tag
 {
     #[ORM\Id]
@@ -19,9 +22,27 @@ class Tag
     private int $id;
 
     #[ORM\Column(type: 'string', length: 255)]
+    #[Assert\NotBlank(message: 'Název tagu nesmí být prázdný.')]
+    #[Assert\Length(
+        min: 2,
+        max: 255,
+        minMessage: 'Název tagu musí mít alespoň {{ limit }} znaky.',
+        maxMessage: 'Název tagu nesmí být delší než {{ limit }} znaků.'
+    )]
     private string $name;
 
     #[ORM\Column(type: 'string', length: 255, unique: true)]
+    #[Assert\NotBlank(message: 'Slug nesmí být prázdný.')]
+    #[Assert\Length(
+        min: 2,
+        max: 255,
+        minMessage: 'Slug musí mít alespoň {{ limit }} znaky.',
+        maxMessage: 'Slug nesmí být delší než {{ limit }} znaků.'
+    )]
+    #[Assert\Regex(
+        pattern: '/^[a-z0-9-]+$/',
+        message: 'Slug může obsahovat pouze malá písmena, čísla a pomlčky.'
+    )]
     private string $slug;
 
     #[ORM\ManyToMany(targetEntity: Addon::class, mappedBy: 'tags')]
@@ -84,5 +105,17 @@ class Tag
         }
 
         return $this;
+    }
+
+    /**
+     * Konvertuje data entity do pole
+     */
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'slug' => $this->slug,
+        ];
     }
 }

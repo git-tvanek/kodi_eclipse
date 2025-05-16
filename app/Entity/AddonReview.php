@@ -8,6 +8,7 @@ use App\Repository\Doctrine\AddonReviewRepository;
 use DateTime;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: AddonReviewRepository::class)]
 #[ORM\Table(name: 'addon_reviews')]
@@ -26,6 +27,7 @@ class AddonReview
 
     #[ORM\ManyToOne(targetEntity: Addon::class, inversedBy: 'reviews')]
     #[ORM\JoinColumn(name: 'addon_id', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[Assert\NotNull(message: 'Doplněk musí být vybrán.')]
     private Addon $addon;
 
     #[ORM\ManyToOne(targetEntity: User::class, inversedBy: 'reviews')]
@@ -33,18 +35,38 @@ class AddonReview
     private ?User $user = null;
 
     #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    #[Assert\Length(
+        max: 255,
+        maxMessage: 'Jméno nesmí být delší než {{ limit }} znaků.'
+    )]
     private ?string $name = null;
 
     #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    #[Assert\Email(message: 'Email musí být platná emailová adresa.')]
+    #[Assert\Length(
+        max: 255,
+        maxMessage: 'Email nesmí být delší než {{ limit }} znaků.'
+    )]
     private ?string $email = null;
 
     #[ORM\Column(type: 'integer')]
+    #[Assert\NotBlank(message: 'Hodnocení nesmí být prázdné.')]
+    #[Assert\Range(
+        min: self::RATING_MIN,
+        max: self::RATING_MAX,
+        notInRangeMessage: 'Hodnocení musí být mezi {{ min }} a {{ max }}.'
+    )]
     private int $rating;
 
     #[ORM\Column(type: 'text', nullable: true)]
+    #[Assert\Length(
+        max: 10000,
+        maxMessage: 'Komentář nesmí být delší než {{ limit }} znaků.'
+    )]
     private ?string $comment = null;
 
     #[ORM\Column(type: 'datetime_immutable')]
+    #[Assert\NotNull(message: 'Datum vytvoření nesmí být prázdné.')]
     private DateTimeImmutable $created_at;
 
     #[ORM\Column(type: 'datetime', nullable: true)]
@@ -275,7 +297,8 @@ class AddonReview
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             'is_verified' => $this->is_verified,
-            'is_active' => $this->is_active
+            'is_active' => $this->is_active,
+            'version' => $this->version
         ];
     }
 }

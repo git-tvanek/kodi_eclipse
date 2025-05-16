@@ -7,6 +7,7 @@ namespace App\Entity;
 use App\Repository\Doctrine\DownloadLogRepository;
 use DateTime;
 use Doctrine\ORM\Mapping as ORM;
+use Symfony\Component\Validator\Constraints as Assert;
 
 #[ORM\Entity(repositoryClass: DownloadLogRepository::class)]
 #[ORM\Table(name: 'downloads_log')]
@@ -20,15 +21,29 @@ class DownloadLog
     
     #[ORM\ManyToOne(targetEntity: Addon::class)]
     #[ORM\JoinColumn(name: 'addon_id', referencedColumnName: 'id', nullable: false, onDelete: 'CASCADE')]
+    #[Assert\NotNull(message: 'Doplněk musí být vybrán.')]
     private Addon $addon;
     
     #[ORM\Column(type: 'datetime')]
+    #[Assert\NotNull(message: 'Datum vytvoření nesmí být prázdné.')]
     private DateTime $created_at;
     
     #[ORM\Column(type: 'string', length: 45, nullable: true)]
+    #[Assert\Length(
+        max: 45,
+        maxMessage: 'IP adresa nesmí být delší než {{ limit }} znaků.'
+    )]
+    #[Assert\Ip(
+        message: 'Hodnota musí být platná IP adresa.',
+        version: 'all'
+    )]
     private ?string $ip_address = null;
     
     #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    #[Assert\Length(
+        max: 255,
+        maxMessage: 'User Agent nesmí být delší než {{ limit }} znaků.'
+    )]
     private ?string $user_agent = null;
     
     /**

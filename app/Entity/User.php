@@ -11,9 +11,14 @@ use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\Mapping as ORM;
 use Nette\Security\IIdentity;
 use Nette\Security\Passwords;
+use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Bridge\Doctrine\Validator\Constraints\UniqueEntity;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\Table(name: 'users')]
+#[ORM\HasLifecycleCallbacks]
+#[UniqueEntity(fields: ['username'], message: 'Toto uživatelské jméno je již používáno.')]
+#[UniqueEntity(fields: ['email'], message: 'Tento email je již používán.')]
 class User implements IIdentity
 {
     #[ORM\Id]
@@ -22,12 +27,30 @@ class User implements IIdentity
     private int $id;
 
     #[ORM\Column(type: 'string', length: 255, unique: true)]
+    #[Assert\NotBlank(message: 'Uživatelské jméno nesmí být prázdné.')]
+    #[Assert\Length(
+        min: 3,
+        max: 255,
+        minMessage: 'Uživatelské jméno musí mít alespoň {{ limit }} znaky.',
+        maxMessage: 'Uživatelské jméno nesmí být delší než {{ limit }} znaků.'
+    )]
+    #[Assert\Regex(
+        pattern: '/^[a-zA-Z0-9_.-]+$/',
+        message: 'Uživatelské jméno může obsahovat pouze písmena, čísla, podtržítka, tečky a pomlčky.'
+    )]
     private string $username;
 
     #[ORM\Column(type: 'string', length: 255, unique: true)]
+    #[Assert\NotBlank(message: 'Email nesmí být prázdný.')]
+    #[Assert\Email(message: 'Email musí být platná emailová adresa.')]
+    #[Assert\Length(
+        max: 255,
+        maxMessage: 'Email nesmí být delší než {{ limit }} znaků.'
+    )]
     private string $email;
 
     #[ORM\Column(type: 'string', length: 255)]
+    #[Assert\NotBlank(message: 'Heslo nesmí být prázdné.')]
     private string $password_hash;
 
     #[ORM\Column(type: 'boolean', options: ['default' => true])]
@@ -46,12 +69,19 @@ class User implements IIdentity
     private ?DateTime $password_reset_expires = null;
 
     #[ORM\Column(type: 'string', length: 255, nullable: true)]
+    #[Assert\Url(message: 'URL profilového obrázku musí být platná URL adresa.')]
+    #[Assert\Length(
+        max: 255,
+        maxMessage: 'URL profilového obrázku nesmí být delší než {{ limit }} znaků.'
+    )]
     private ?string $profile_image = null;
 
     #[ORM\Column(type: 'datetime')]
+    #[Assert\NotNull(message: 'Datum vytvoření nesmí být prázdné.')]
     private DateTime $created_at;
 
     #[ORM\Column(type: 'datetime')]
+    #[Assert\NotNull(message: 'Datum aktualizace nesmí být prázdné.')]
     private DateTime $updated_at;
 
     #[ORM\Column(type: 'datetime', nullable: true)]
@@ -287,6 +317,14 @@ class User implements IIdentity
     }
 
     /**
+     * @ORM\PreUpdate
+     */
+    public function preUpdate(): void
+    {
+        $this->updated_at = new DateTime();
+    }
+
+    /**
      * Pro získání dat kompatibilních s Nette\Security\SimpleIdentity
      */
     public function getIdentityData(): array
@@ -297,6 +335,24 @@ class User implements IIdentity
             'is_active' => $this->is_active,
             'is_verified' => $this->is_verified,
             'profile_image' => $this->profile_image,
+        ];
+    }
+
+    /**
+     * Konvertuje data entity do pole
+     */
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'username' => $this->username,
+            'email' => $this->email,
+            'is_active' => $this->is_active,
+            'is_verified' => $this->is_verified,
+            'profile_image' => $this->profile_image,
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
+            'last_login' => $this->last_login
         ];
     }
 }
