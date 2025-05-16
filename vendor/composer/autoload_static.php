@@ -73,6 +73,10 @@ class ComposerStaticInit9c49a418f02ffb235919088891200a26
             'Doctrine\\Common\\Annotations\\' => 28,
             'Doctrine\\Common\\' => 16,
         ),
+        'C' => 
+        array (
+            'Contributte\\Console\\' => 20,
+        ),
         'B' => 
         array (
             'Behat\\Transliterator\\' => 21,
@@ -236,6 +240,10 @@ class ComposerStaticInit9c49a418f02ffb235919088891200a26
         array (
             0 => __DIR__ . '/..' . '/doctrine/common/src',
             1 => __DIR__ . '/..' . '/doctrine/event-manager/src',
+        ),
+        'Contributte\\Console\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/contributte/console/src',
         ),
         'Behat\\Transliterator\\' => 
         array (

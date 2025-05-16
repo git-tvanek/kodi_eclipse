@@ -28,4 +28,4 @@ di:
 		tags: no
 
 includes:
-	- config/doctrine.neon
+	- doctrine.neon
