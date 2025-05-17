@@ -150,12 +150,13 @@ interface IAddonRepository extends IBaseRepository
     public function updateWithRelated(Addon $addon, array $screenshots = [], array $tagIds = []): int;
     
     /**
-     * Načte doplněk včetně všech souvisejících entit
-     * 
-     * @param int $id ID doplňku
-     * @return array|null Pole s doplňkem a souvisejícími entitami, nebo null pokud doplněk neexistuje
-     */
-    public function getWithRelated(int $id): ?array;
+    * Načte doplněk včetně všech souvisejících entit
+    * 
+    * @param int $id ID doplňku
+    * @param array $relations Seznam relací k načtení
+    * @return array|null Pole s doplňkem a souvisejícími entitami, nebo null pokud doplněk neexistuje
+    */
+    public function getWithRelated(int $id, array $relations = []): ?array;
     
     /**
      * Získá statistiky stažení podle doplňků

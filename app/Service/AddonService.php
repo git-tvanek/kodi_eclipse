@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\Addon;
-use App\Model\Screenshot;
+use App\Entity\Addon;
+use App\Entity\Screenshot;
 use App\Repository\AddonRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;

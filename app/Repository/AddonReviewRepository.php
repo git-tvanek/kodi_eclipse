@@ -9,7 +9,7 @@ use App\Entity\Addon;
 use App\Entity\User;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Repository\Interface\IReviewRepository;
+use App\Repository\Interface\IAddonReviewRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\NoResultException;
 use Psr\Cache\CacheItemPoolInterface;
@@ -19,7 +19,7 @@ use Psr\Cache\CacheItemPoolInterface;
  * 
  * @extends BaseRepository<AddonReview>
  */
-class AddonReviewRepository extends BaseRepository implements IReviewRepository
+class AddonReviewRepository extends BaseRepository implements IAddonReviewRepository
 {
     protected string $defaultAlias = 'r';
     private ?CacheItemPoolInterface $cache;

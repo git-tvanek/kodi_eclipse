@@ -1,4 +1,7 @@
 extensions:
+    # Add this line - it's required for Doctrine annotations to work
+    annotations: Nettrine\Annotations\DI\AnnotationsExtension
+    
     # Registrace DBAL
     dbal: Nettrine\DBAL\DI\DbalExtension
     
@@ -13,6 +16,10 @@ extensions:
     # Registrace Doctrine rozšíření 
     orm.annotations: Nettrine\ORM\DI\OrmAnnotationsExtension
     orm.cache: Nettrine\ORM\DI\OrmCacheExtension
+
+# Optional configuration for annotations
+annotations:
+    debug: %debugMode%
 
 # Konfigurace DBAL (databázová vrstva)
 dbal:
@@ -40,6 +47,5 @@ orm.annotations:
         App\Entity: %appDir%/Entity
 
 # Konfigurace cache
-# Zjednodušená konfigurace cache
-orm.cache:
-    defaultDriver: filesystem
+cache:
+    driver: Doctrine\Common\Cache\ArrayCache
