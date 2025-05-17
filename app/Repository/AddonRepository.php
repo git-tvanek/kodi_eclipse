@@ -450,7 +450,7 @@ class AddonRepository extends BaseRepository implements IAddonRepository
     /**
      * {@inheritDoc}
      */
-    public function getWithRelated(int $id): ?array
+    public function getWithRelated(int $id, array $relations = []): ?array
     {
         $addon = $this->find($id);
         
