@@ -6,6 +6,7 @@ namespace App\Repository;
 
 use App\Entity\DownloadLog;
 use App\Entity\Addon;
+use App\Repository\Interface\IDownloadLogRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -13,7 +14,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * 
  * @extends BaseDoctrineRepository<DownloadLog>
  */
-class DownloadLogRepository extends BaseRepository
+class DownloadLogRepository extends BaseRepository implements IDownloadLogRepository
 {
     /**
      * Konstruktor
