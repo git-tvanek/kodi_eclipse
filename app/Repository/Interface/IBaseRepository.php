@@ -6,114 +6,181 @@ namespace App\Repository\Interface;
 
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
+use Doctrine\ORM\QueryBuilder;
 
 /**
- * Základní rozhraní pro všechny repozitáře
+ * Comprehensive interface for base repository functionality
  * 
  * @template T
  */
 interface IBaseRepository
 {
     /**
-     * Vrátí všechny záznamy entity
+     * Finds all entities
      * 
-     * @return iterable<T> Kolekce všech entit
+     * @return iterable<T>
      */
     public function findAll(): iterable;
     
     /**
-     * Najde entitu podle ID
+     * Finds entity by ID
      * 
-     * @param int $id ID entity
-     * @return T|null Entita nebo null, pokud nebyla nalezena
+     * @param int $id
+     * @return T|null
      */
     public function findById(int $id): ?object;
     
-/**
- * Najde jeden záznam podle kritérií
- * 
- * @param array $criteria Kritéria vyhledávání
- * @param array|null $orderBy Kritéria řazení
- * @return T|null Entita nebo null, pokud nebyla nalezena
- */
-public function findOneBy(array $criteria, ?array $orderBy = null): ?object;
-
-/**
- * Najde záznamy podle kritérií
- * 
- * @param array $criteria Kritéria vyhledávání
- * @param array|null $orderBy Kritéria řazení
- * @param int|null $limit Maximální počet výsledků
- * @param int|null $offset Posun výsledků
- * @return iterable<T> Kolekce nalezených entit
- */
-public function findBy(array $criteria = [], ?array $orderBy = null, $limit = null, $offset = null): iterable;
+    /**
+     * Finds one entity by criteria
+     * 
+     * @param array $criteria
+     * @param array|null $orderBy
+     * @return T|null
+     */
+    public function findOneBy(array $criteria, ?array $orderBy = null): ?object;
     
     /**
-     * Uloží novou nebo aktualizuje existující entitu
+     * Finds entities by criteria
      * 
-     * @param T $entity Entita k uložení
-     * @return int ID uložené entity
+     * @param array $criteria
+     * @param array|null $orderBy
+     * @param int|null $limit
+     * @param int|null $offset
+     * @return iterable<T>
+     */
+    public function findBy(array $criteria = [], ?array $orderBy = null, $limit = null, $offset = null): iterable;
+    
+    /**
+     * Saves entity
+     * 
+     * @param T $entity
+     * @return int Entity ID
      */
     public function save(object $entity): int;
     
     /**
-     * Smaže entitu podle ID
+     * Deletes entity by ID
      * 
-     * @param int $id ID entity ke smazání
-     * @return int Počet smazaných záznamů (0 nebo 1)
+     * @param int $id
+     * @return int Number of deleted entities
      */
     public function delete(int $id): int;
     
     /**
-     * Spočítá záznamy podle kritérií
+     * Counts entities by criteria
      * 
-     * @param array $criteria Kritéria pro počítání záznamů
-     * @return int Počet záznamů
+     * @param array $criteria
+     * @return int
      */
     public function count(array $criteria = []): int;
     
     /**
-     * Najde záznamy se stránkováním
+     * Finds with pagination
      * 
-     * @param array $criteria Kritéria pro vyhledávání
-     * @param int $page Číslo stránky (začíná od 1)
-     * @param int $itemsPerPage Počet položek na stránku
-     * @param string $orderColumn Sloupec pro řazení
-     * @param string $orderDir Směr řazení (ASC nebo DESC)
-     * @return PaginatedCollection<T> Stránkovaná kolekce entit
+     * @param array $criteria
+     * @param int $page
+     * @param int $itemsPerPage
+     * @param string $orderColumn
+     * @param string $orderDir
+     * @return PaginatedCollection<T>
      */
     public function findWithPagination(array $criteria = [], int $page = 1, int $itemsPerPage = 10, string $orderColumn = 'id', string $orderDir = 'ASC'): PaginatedCollection;
-
+    
     /**
-     * Ověří, zda existuje entita s daným ID
+     * Checks if entity exists
      * 
-     * @param int $id ID entity k ověření
-     * @return bool Výsledek ověření
+     * @param int $id
+     * @return bool
      */
     public function exists(int $id): bool;
     
     /**
-     * Zahájí transakci
+     * Finds entity by unique attribute
+     * 
+     * @param string $attribute
+     * @param mixed $value
+     * @return T|null
+     */
+    public function findByUniqueAttribute(string $attribute, $value): ?object;
+    
+    /**
+     * Finds with advanced filters
+     * 
+     * @param array $filters
+     * @param string $sortBy
+     * @param string $sortDir
+     * @param int $page
+     * @param int $itemsPerPage
+     * @return PaginatedCollection<T>
+     */
+    public function findWithFilters(array $filters = [], string $sortBy = 'id', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection;
+    
+    /**
+     * Finds by relation
+     * 
+     * @param string $relation
+     * @param int $id
+     * @param int $page
+     * @param int $itemsPerPage
+     * @return PaginatedCollection<T>
+     */
+    public function findByRelation(string $relation, int $id, int $page = 1, int $itemsPerPage = 10): PaginatedCollection;
+    
+    /**
+     * Gets entity with related data
+     * 
+     * @param int $id
+     * @param array $relations
+     * @return array|null
+     */
+    public function getWithRelated(int $id, array $relations = []): ?array;
+    
+    /**
+     * Checks if entity exists by attribute
+     * 
+     * @param string $attribute
+     * @param mixed $value
+     * @return bool
+     */
+    public function existsByAttribute(string $attribute, $value): bool;
+    
+    /**
+     * Soft deletes entity
+     * 
+     * @param int $id
+     * @param string|null $reason
+     * @return bool
+     */
+    public function softDelete(int $id, ?string $reason = null): bool;
+    
+    /**
+     * Restores soft-deleted entity
+     * 
+     * @param int $id
+     * @return bool
+     */
+    public function restore(int $id): bool;
+    
+    /**
+     * Begins transaction
      */
     public function beginTransaction(): void;
     
     /**
-     * Potvrdí transakci
+     * Commits transaction
      */
     public function commit(): void;
     
     /**
-     * Vrátí transakci
+     * Rolls back transaction
      */
     public function rollback(): void;
     
     /**
-     * Provede transakci s callbackem
+     * Executes transaction with callback
      * 
-     * @param callable $callback Callback, který se má provést v transakci
-     * @return mixed Výsledek callbacku
-     * @throws \Exception Při chybě v transakci
+     * @param callable $callback
+     * @return mixed
      */
     public function transaction(callable $callback);
 }

@@ -9,41 +9,54 @@ use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IAuthorRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\QueryBuilder;
 
 /**
  * Repozitář pro práci s autory doplňků
  * 
- * @extends BaseDoctrineRepository<Author>
+ * @extends BaseRepository<Author>
  */
 class AuthorRepository extends BaseRepository implements IAuthorRepository
 {
+    protected string $defaultAlias = 'a';
+    
+    /**
+     * Konstruktor
+     * 
+     * @param EntityManagerInterface $entityManager
+     */
     public function __construct(EntityManagerInterface $entityManager)
     {
         parent::__construct($entityManager, Author::class);
     }
     
+    /**
+     * Vytvoří typovanou kolekci autorů
+     * 
+     * @param array<Author> $entities
+     * @return Collection<Author>
+     */
     protected function createCollection(array $entities): Collection
     {
         return new Collection($entities);
     }
     
-    // -------------------------------------------------------------------------
-    // ZÁKLADNÍ OPERACE S AUTORY
-    // -------------------------------------------------------------------------
-    
     /**
      * Vytvoří nového autora
+     * 
+     * @param Author $author
+     * @return int ID vytvořeného autora
      */
     public function create(Author $author): int
     {
-        $this->entityManager->persist($author);
-        $this->entityManager->flush();
-        
-        return $author->getId();
+        return $this->save($author);
     }
     
     /**
      * Vrátí autora s jeho doplňky
+     * 
+     * @param int $id ID autora
+     * @return array|null Pole obsahující autora a jeho doplňky, nebo null pokud autor neexistuje
      */
     public function getWithAddons(int $id): ?array
     {
@@ -58,95 +71,61 @@ class AuthorRepository extends BaseRepository implements IAuthorRepository
         
         return [
             'author' => $author,
-            'addons' => new Collection($addons->toArray())
+            'addons' => $this->createCollection($addons->toArray())
         ];
     }
     
-    // -------------------------------------------------------------------------
-    // METODY PRO FILTROVÁNÍ A VYHLEDÁVÁNÍ
-    // -------------------------------------------------------------------------
-    
     /**
      * Vyhledá autory podle zadaných filtrů
+     * 
+     * @param array $filters Pole filtrů pro vyhledávání
+     * @param string $sortBy Pole pro řazení
+     * @param string $sortDir Směr řazení (ASC nebo DESC)
+     * @param int $page Číslo stránky
+     * @param int $itemsPerPage Počet položek na stránku
+     * @return PaginatedCollection<Author> Stránkovaná kolekce autorů
      */
     public function findWithFilters(array $filters = [], string $sortBy = 'name', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('a');
+        $qb = $this->createQueryBuilder($this->defaultAlias);
         
-        // Apply filters
-        foreach ($filters as $key => $value) {
-            if ($value === null || $value === '') {
-                continue;
-            }
-            
-            switch ($key) {
-                case 'name':
-                    $qb->andWhere('a.name LIKE :name')
-                       ->setParameter('name', '%' . $value . '%');
-                    break;
-                
-                case 'email':
-                    $qb->andWhere('a.email LIKE :email')
-                       ->setParameter('email', '%' . $value . '%');
-                    break;
-                
-                case 'min_addons':
-                    $qb->join('a.addons', 'addon')
-                       ->groupBy('a.id')
-                       ->having('COUNT(addon.id) >= :minAddons')
-                       ->setParameter('minAddons', $value);
-                    break;
-                
-                case 'has_website':
-                    if ($value) {
-                        $qb->andWhere('a.website IS NOT NULL')
-                           ->andWhere('a.website != :emptyString')
-                           ->setParameter('emptyString', '');
-                    } else {
-                        $qb->andWhere('a.website IS NULL OR a.website = :emptyString')
-                           ->setParameter('emptyString', '');
-                    }
-                    break;
-                
-                case 'created_after':
-                    if ($value instanceof \DateTime) {
-                        $qb->andWhere('a.created_at >= :createdAfter')
-                           ->setParameter('createdAfter', $value);
-                    }
-                    break;
-                
-                case 'created_before':
-                    if ($value instanceof \DateTime) {
-                        $qb->andWhere('a.created_at <= :createdBefore')
-                           ->setParameter('createdBefore', $value);
-                    }
-                    break;
-                
-                default:
-                    if (property_exists(Author::class, $key)) {
-                        $qb->andWhere("a.$key = :$key")
-                           ->setParameter($key, $value);
-                    }
-                    break;
+        // Apply standard filters from parent
+        $qb = $this->applyFilters($qb, $filters, $this->defaultAlias);
+        
+        // Apply custom filters specific to authors
+        if (isset($filters['min_addons']) && $filters['min_addons'] !== null && (int)$filters['min_addons'] > 0) {
+            $qb->join("$this->defaultAlias.addons", 'addon')
+               ->groupBy("$this->defaultAlias.id")
+               ->having('COUNT(addon.id) >= :minAddons')
+               ->setParameter('minAddons', (int)$filters['min_addons']);
+        }
+        
+        if (isset($filters['has_website']) && $filters['has_website'] !== null) {
+            if ($filters['has_website']) {
+                $qb->andWhere("$this->defaultAlias.website IS NOT NULL")
+                   ->andWhere("$this->defaultAlias.website != :emptyString")
+                   ->setParameter('emptyString', '');
+            } else {
+                $qb->andWhere("$this->defaultAlias.website IS NULL OR $this->defaultAlias.website = :emptyString")
+                   ->setParameter('emptyString', '');
             }
         }
         
-        // Apply ordering
-        if (property_exists(Author::class, $sortBy)) {
-            $qb->orderBy("a.$sortBy", $sortDir);
+        // Apply sorting
+        if ($this->hasProperty($sortBy)) {
+            $qb->orderBy("$this->defaultAlias.$sortBy", $sortDir);
         } else {
-            $qb->orderBy('a.name', 'ASC');
+            $qb->orderBy("$this->defaultAlias.name", 'ASC');
         }
         
         return $this->paginate($qb, $page, $itemsPerPage);
     }
     
-    // -------------------------------------------------------------------------
-    // STATISTICKÉ METODY
-    // -------------------------------------------------------------------------
-    
     /**
      * Získá statistiky autora a jeho doplňků
+     * 
+     * @param int $authorId ID autora
+     * @return array Statistiky autora nebo prázdné pole, pokud autor neexistuje
      */
     public function getAuthorStatistics(int $authorId): array
     {
@@ -214,35 +193,39 @@ class AuthorRepository extends BaseRepository implements IAuthorRepository
     
     /**
      * Vrátí autory seřazené podle zvoleného kritéria
+     * 
+     * @param string $metric Kritérium ('addons', 'downloads', 'rating')
+     * @param int $limit Maximální počet autorů
+     * @return array Pole s nejlepšími autory podle zvoleného kritéria
      */
     public function getTopAuthors(string $metric = 'addons', int $limit = 10): array
     {
         $qb = $this->entityManager->createQueryBuilder();
-        $qb->select('a');
+        $qb->select("$this->defaultAlias");
         
         switch ($metric) {
             case 'downloads':
                 $qb->addSelect('SUM(addon.downloads_count) as metricValue')
-                   ->from(Author::class, 'a')
-                   ->join('a.addons', 'addon')
-                   ->groupBy('a.id')
+                   ->from(Author::class, $this->defaultAlias)
+                   ->join("$this->defaultAlias.addons", 'addon')
+                   ->groupBy("$this->defaultAlias.id")
                    ->orderBy('metricValue', 'DESC');
                 break;
                 
             case 'rating':
                 $qb->addSelect('AVG(addon.rating) as metricValue')
-                   ->from(Author::class, 'a')
-                   ->join('a.addons', 'addon')
-                   ->groupBy('a.id')
+                   ->from(Author::class, $this->defaultAlias)
+                   ->join("$this->defaultAlias.addons", 'addon')
+                   ->groupBy("$this->defaultAlias.id")
                    ->orderBy('metricValue', 'DESC');
                 break;
                 
             case 'addons':
             default:
                 $qb->addSelect('COUNT(addon.id) as metricValue')
-                   ->from(Author::class, 'a')
-                   ->join('a.addons', 'addon')
-                   ->groupBy('a.id')
+                   ->from(Author::class, $this->defaultAlias)
+                   ->join("$this->defaultAlias.addons", 'addon')
+                   ->groupBy("$this->defaultAlias.id")
                    ->orderBy('metricValue', 'DESC');
                 break;
         }
@@ -280,12 +263,12 @@ class AuthorRepository extends BaseRepository implements IAuthorRepository
         return $authors;
     }
     
-    // -------------------------------------------------------------------------
-    // METODY PRO SÍŤOVOU ANALÝZU
-    // -------------------------------------------------------------------------
-    
     /**
      * Vytvoří síť autorů spolupracujících prostřednictvím podobných tagů
+     * 
+     * @param int $authorId ID autora
+     * @param int $depth Hloubka prohledávání sítě
+     * @return array Struktura sítě spolupracujících autorů
      */
     public function getCollaborationNetwork(int $authorId, int $depth = 2): array
     {
@@ -316,6 +299,12 @@ class AuthorRepository extends BaseRepository implements IAuthorRepository
     
     /**
      * Pomocná metoda pro rekurzivní vytváření sítě spolupracujících autorů
+     * 
+     * @param Author $author Autor
+     * @param array &$visitedAuthors Reference na pole již navštívených autorů
+     * @param array &$network Reference na síť autorů
+     * @param int $level Aktuální úroveň hloubky
+     * @param int $maxDepth Maximální hloubka prohledávání
      */
     private function buildCollaborationNetwork(Author $author, array &$visitedAuthors, array &$network, int $level, int $maxDepth): void
     {
@@ -338,15 +327,15 @@ class AuthorRepository extends BaseRepository implements IAuthorRepository
         
         // Find other authors who use the same tags
         $qb = $this->entityManager->createQueryBuilder();
-        $qb->select('a', 'COUNT(DISTINCT t.id) as tagCount')
-           ->from(Author::class, 'a')
-           ->join('a.addons', 'addon')
+        $qb->select($this->defaultAlias, 'COUNT(DISTINCT t.id) as tagCount')
+           ->from(Author::class, $this->defaultAlias)
+           ->join("$this->defaultAlias.addons", 'addon')
            ->join('addon.tags', 't')
            ->where('t.id IN (:tags)')
-           ->andWhere('a.id != :authorId')
+           ->andWhere("$this->defaultAlias.id != :authorId")
            ->setParameter('tags', array_unique($authorTags))
            ->setParameter('authorId', $author->getId())
-           ->groupBy('a.id')
+           ->groupBy("$this->defaultAlias.id")
            ->having('tagCount > 1')
            ->orderBy('tagCount', 'DESC');
         

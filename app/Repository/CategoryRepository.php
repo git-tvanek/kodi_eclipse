@@ -11,49 +11,93 @@ use App\Repository\Interface\ICategoryRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * @extends BaseDoctrineRepository<Category>
+ * Repozitář pro práci s kategoriemi
+ * 
+ * @extends BaseRepository<Category>
  */
 class CategoryRepository extends BaseRepository implements ICategoryRepository
 {
+    protected string $defaultAlias = 'c';
+    
+    /**
+     * Konstruktor
+     * 
+     * @param EntityManagerInterface $entityManager
+     */
     public function __construct(EntityManagerInterface $entityManager)
     {
         parent::__construct($entityManager, Category::class);
     }
     
+    /**
+     * Vytvoří typovanou kolekci kategorií
+     * 
+     * @param array<Category> $entities
+     * @return Collection<Category>
+     */
     protected function createCollection(array $entities): Collection
     {
         return new Collection($entities);
     }
     
+    /**
+     * Najde kategorii podle slugu
+     * 
+     * @param string $slug
+     * @return Category|null
+     */
     public function findBySlug(string $slug): ?Category
     {
         return $this->findOneBy(['slug' => $slug]);
     }
     
+    /**
+     * Získá kořenové kategorie
+     * 
+     * @return Collection<Category>
+     */
     public function findRootCategories(): Collection
     {
         $categories = $this->findBy(['parent' => null]);
-        return new Collection($categories);
+        return $this->createCollection($categories);
     }
     
+    /**
+     * Získá podkategorie kategorie
+     * 
+     * @param int $parentId
+     * @return Collection<Category>
+     */
     public function findSubcategories(int $parentId): Collection
     {
         $parent = $this->find($parentId);
         if (!$parent) {
-            return new Collection([]);
+            return $this->createCollection([]);
         }
         
         $categories = $this->findBy(['parent' => $parent]);
-        return new Collection($categories);
+        return $this->createCollection($categories);
     }
     
+    /**
+     * Získá všechny podkategorie rekurzivně
+     * 
+     * @param int $categoryId
+     * @return Collection<Category>
+     */
     public function findAllSubcategoriesRecursive(int $categoryId): Collection
     {
         $result = [];
         $this->findSubcategoriesRecursive($categoryId, $result);
-        return new Collection($result);
+        return $this->createCollection($result);
     }
     
+    /**
+     * Pomocná metoda pro rekurzivní hledání všech podkategorií
+     * 
+     * @param int $parentId
+     * @param array &$result Reference na pole výsledků
+     */
     private function findSubcategoriesRecursive(int $parentId, array &$result): void
     {
         $subcategories = $this->findSubcategories($parentId);
@@ -64,6 +108,12 @@ class CategoryRepository extends BaseRepository implements ICategoryRepository
         }
     }
     
+    /**
+     * Získá kompletní cestu ke kategorii (od kořene ke kategorii)
+     * 
+     * @param int $categoryId
+     * @return Collection<Category>
+     */
     public function getCategoryPath(int $categoryId): Collection
     {
         $path = [];
@@ -74,9 +124,14 @@ class CategoryRepository extends BaseRepository implements ICategoryRepository
             $category = $category->getParent();
         }
         
-        return new Collection($path);
+        return $this->createCollection($path);
     }
     
+    /**
+     * Získá hierarchii kategorií
+     * 
+     * @return array
+     */
     public function getHierarchy(): array
     {
         // Get all categories
@@ -103,12 +158,12 @@ class CategoryRepository extends BaseRepository implements ICategoryRepository
         foreach ($categoriesById as $id => $categoryData) {
             if ($categoryData['parent_id'] === null) {
                 // This is a root category
-                $hierarchy[] = $categoryData;
+                $hierarchy[] = &$categoriesById[$id];
             } else {
                 // This is a child category
                 $parentId = $categoryData['parent_id'];
                 if (isset($categoriesById[$parentId])) {
-                    $categoriesById[$parentId]['subcategories'][] = $categoryData;
+                    $categoriesById[$parentId]['subcategories'][] = &$categoriesById[$id];
                 }
             }
         }
@@ -116,29 +171,41 @@ class CategoryRepository extends BaseRepository implements ICategoryRepository
         return $hierarchy;
     }
     
+    /**
+     * Vytvoří novou kategorii
+     * 
+     * @param Category $category
+     * @return int ID vytvořené kategorie
+     */
     public function create(Category $category): int
     {
-        $this->entityManager->persist($category);
-        $this->entityManager->flush();
-        
-        return $category->getId();
+        return $this->save($category);
     }
     
+    /**
+     * Aktualizuje kategorii
+     * 
+     * @param Category $category
+     * @return int ID aktualizované kategorie
+     */
     public function update(Category $category): int
     {
-        $this->entityManager->persist($category);
-        $this->entityManager->flush();
-        
-        return $category->getId();
+        return $this->updateEntity($category);
     }
     
+    /**
+     * Získá nejpopulárnější kategorie podle stažení doplňků
+     * 
+     * @param int $limit
+     * @return array
+     */
     public function getMostPopularCategories(int $limit = 10): array
     {
         $qb = $this->entityManager->createQueryBuilder();
-        $qb->select('c', 'COUNT(a.id) as addonCount', 'SUM(a.downloads_count) as totalDownloads')
-           ->from(Category::class, 'c')
-           ->join('c.addons', 'a')
-           ->groupBy('c.id')
+        $qb->select("$this->defaultAlias", 'COUNT(a.id) as addonCount', 'SUM(a.downloads_count) as totalDownloads')
+           ->from(Category::class, $this->defaultAlias)
+           ->join("$this->defaultAlias.addons", 'a')
+           ->groupBy("$this->defaultAlias.id")
            ->orderBy('totalDownloads', 'DESC')
            ->setMaxResults($limit);
         
@@ -160,6 +227,11 @@ class CategoryRepository extends BaseRepository implements ICategoryRepository
         return $categories;
     }
     
+    /**
+     * Získá úplnou hierarchii kategorií se statistikami
+     * 
+     * @return array
+     */
     public function getHierarchyWithStats(): array
     {
         // Get all categories
@@ -184,7 +256,7 @@ class CategoryRepository extends BaseRepository implements ICategoryRepository
         }
         
         // Second pass: build the tree
-        foreach ($categoriesById as $id => $categoryData) {
+        foreach ($categoriesById as $id => &$categoryData) {
             $category = $categoryData['category'];
             $parent = $category->getParent();
             
@@ -206,6 +278,12 @@ class CategoryRepository extends BaseRepository implements ICategoryRepository
         return $hierarchy;
     }
     
+    /**
+     * Aktualizuje počty doplňků v hierarchii
+     * 
+     * @param array &$categories
+     * @return int Počet doplňků v této větvi
+     */
     private function updateTotalCounts(array &$categories): int
     {
         $total = 0;

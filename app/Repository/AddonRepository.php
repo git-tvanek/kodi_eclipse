@@ -10,27 +10,21 @@ use App\Entity\Category;
 use App\Entity\Tag;
 use App\Entity\Screenshot;
 use App\Collection\Collection;
-use App\Collection\AddonCollection;
 use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IAddonRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
-use Doctrine\ORM\Query\Expr\Join;
-use Doctrine\ORM\Tools\Pagination\Paginator;
-use Doctrine\ORM\Tools\Pagination\PaginatorInterface;
-use Doctrine\ORM\EntityRepository;
-use Doctrine\ORM\Query;
-use Doctrine\ORM\Query\Expr;
-use Doctrine\ORM\Query\Expr\Orx;
-
+use Doctrine\Common\Collections\ArrayCollection;
 
 /**
  * Repozitář pro práci s doplňky
  * 
- * @extends BaseDoctrineRepository<Addon>
+ * @extends BaseRepository<Addon>
  */
 class AddonRepository extends BaseRepository implements IAddonRepository
 {
+    protected string $defaultAlias = 'a';
+    
     /**
      * Konstruktor
      * 
@@ -47,20 +41,9 @@ class AddonRepository extends BaseRepository implements IAddonRepository
      * @param array<Addon> $entities Pole entit
      * @return Collection<Addon> Typovaná kolekce
      */
-    /**protected function createCollection(array $entities): Collection
-    {
-        return new AddonCollection($entities);
-    }*/
-
-    /**
-    * Vytvoří typovanou kolekci doplňků
-    * 
-    * @param array<Addon> $entities Pole entit
-    * @return Collection<Addon> Typovaná kolekce
-    */
     protected function createCollection(array $entities): Collection
     {
-    return new Collection($entities); // Namísto AddonCollection použijeme základní Collection
+        return new Collection($entities);
     }
     
     /**
@@ -76,10 +59,10 @@ class AddonRepository extends BaseRepository implements IAddonRepository
      */
     public function findByAuthor(int $authorId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('a')
-            ->andWhere('a.author = :author')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->andWhere("$this->defaultAlias.author = :author")
             ->setParameter('author', $this->entityManager->getReference(Author::class, $authorId))
-            ->orderBy('a.name', 'ASC');
+            ->orderBy("$this->defaultAlias.name", 'ASC');
 
         return $this->paginate($qb, $page, $itemsPerPage);
     }
@@ -89,10 +72,10 @@ class AddonRepository extends BaseRepository implements IAddonRepository
      */
     public function findByCategory(int $categoryId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('a')
-            ->andWhere('a.category = :category')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->andWhere("$this->defaultAlias.category = :category")
             ->setParameter('category', $this->entityManager->getReference(Category::class, $categoryId))
-            ->orderBy('a.name', 'ASC');
+            ->orderBy("$this->defaultAlias.name", 'ASC');
 
         return $this->paginate($qb, $page, $itemsPerPage);
     }
@@ -106,14 +89,24 @@ class AddonRepository extends BaseRepository implements IAddonRepository
         $categoryIds = [$categoryId];
         $this->findAllSubcategoryIds($categoryId, $categoryIds);
         
+        if (empty($categoryIds)) {
+            return new PaginatedCollection(
+                $this->createCollection([]),
+                0,
+                $page,
+                $itemsPerPage,
+                0
+            );
+        }
+        
         // Vyhledat doplňky ve všech kategoriích
-        $qb = $this->createQueryBuilder('a')
-            ->andWhere('a.category IN (:categories)')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->andWhere("$this->defaultAlias.category IN (:categories)")
             ->setParameter('categories', array_map(
                 fn($id) => $this->entityManager->getReference(Category::class, $id),
                 $categoryIds
             ))
-            ->orderBy('a.name', 'ASC');
+            ->orderBy("$this->defaultAlias.name", 'ASC');
 
         return $this->paginate($qb, $page, $itemsPerPage);
     }
@@ -146,8 +139,8 @@ class AddonRepository extends BaseRepository implements IAddonRepository
      */
     public function findPopular(int $limit = 10): Collection
     {
-        $addons = $this->createQueryBuilder('a')
-            ->orderBy('a.downloads_count', 'DESC')
+        $addons = $this->createQueryBuilder($this->defaultAlias)
+            ->orderBy("$this->defaultAlias.downloads_count", 'DESC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
@@ -160,9 +153,9 @@ class AddonRepository extends BaseRepository implements IAddonRepository
      */
     public function findTopRated(int $limit = 10): Collection
     {
-        $addons = $this->createQueryBuilder('a')
-            ->where('a.rating > 0') // Jen doplňky s hodnocením
-            ->orderBy('a.rating', 'DESC')
+        $addons = $this->createQueryBuilder($this->defaultAlias)
+            ->where("$this->defaultAlias.rating > 0") // Jen doplňky s hodnocením
+            ->orderBy("$this->defaultAlias.rating", 'DESC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
@@ -175,8 +168,8 @@ class AddonRepository extends BaseRepository implements IAddonRepository
      */
     public function findNewest(int $limit = 10): Collection
     {
-        $addons = $this->createQueryBuilder('a')
-            ->orderBy('a.created_at', 'DESC')
+        $addons = $this->createQueryBuilder($this->defaultAlias)
+            ->orderBy("$this->defaultAlias.created_at", 'DESC')
             ->setMaxResults($limit)
             ->getQuery()
             ->getResult();
@@ -197,31 +190,31 @@ class AddonRepository extends BaseRepository implements IAddonRepository
         $category = $addon->getCategory();
         $tags = $addon->getTags();
         
-        $qb = $this->createQueryBuilder('a')
-            ->where('a.id != :addonId')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->where("$this->defaultAlias.id != :addonId")
             ->setParameter('addonId', $addonId);
         
         // Pokud má doplněk tagy, použít je pro hledání podobných
         if (count($tags) > 0) {
-            $qb->join('a.tags', 't')
+            $qb->join("$this->defaultAlias.tags", 't')
                ->andWhere('t IN (:tags)')
-               ->andWhere('a.category = :category')
+               ->andWhere("$this->defaultAlias.category = :category")
                ->setParameter('tags', $tags)
                ->setParameter('category', $category)
-               ->orderBy('a.downloads_count', 'DESC')
-               ->groupBy('a.id')
+               ->orderBy("$this->defaultAlias.downloads_count", 'DESC')
+               ->groupBy("$this->defaultAlias.id")
                ->setMaxResults($limit);
                
             // Optimalizace - přidání počtu shodných tagů
             $qb->addSelect('COUNT(t.id) AS HIDDEN tagCount')
                ->having('tagCount > 0')
                ->orderBy('tagCount', 'DESC')
-               ->addOrderBy('a.downloads_count', 'DESC');
+               ->addOrderBy("$this->defaultAlias.downloads_count", 'DESC');
         } else {
             // Jinak jen použít kategorii
-            $qb->andWhere('a.category = :category')
+            $qb->andWhere("$this->defaultAlias.category = :category")
                ->setParameter('category', $category)
-               ->orderBy('a.downloads_count', 'DESC')
+               ->orderBy("$this->defaultAlias.downloads_count", 'DESC')
                ->setMaxResults($limit);
         }
         
@@ -246,7 +239,7 @@ class AddonRepository extends BaseRepository implements IAddonRepository
             );
         }
         
-        $qb = $this->createQueryBuilder('a');
+        $qb = $this->createQueryBuilder($this->defaultAlias);
         
         // Rozdělit dotaz na klíčová slova
         $keywords = preg_split('/\s+/', trim($query));
@@ -255,13 +248,14 @@ class AddonRepository extends BaseRepository implements IAddonRepository
         $orExpressions = $qb->expr()->orX();
         
         foreach ($keywords as $keyword) {
-            $orExpressions->add($qb->expr()->like('a.name', ':keyword_' . md5($keyword)));
-            $orExpressions->add($qb->expr()->like('a.description', ':keyword_' . md5($keyword)));
-            $qb->setParameter('keyword_' . md5($keyword), '%' . $keyword . '%');
+            $paramKey = 'keyword_' . md5($keyword);
+            $orExpressions->add($qb->expr()->like("$this->defaultAlias.name", ":$paramKey"));
+            $orExpressions->add($qb->expr()->like("$this->defaultAlias.description", ":$paramKey"));
+            $qb->setParameter($paramKey, '%' . $keyword . '%');
         }
         
         $qb->andWhere($orExpressions)
-           ->orderBy('a.downloads_count', 'DESC');
+           ->orderBy("$this->defaultAlias.downloads_count", 'DESC');
         
         return $this->paginate($qb, $page, $itemsPerPage);
     }
@@ -271,7 +265,7 @@ class AddonRepository extends BaseRepository implements IAddonRepository
      */
     public function advancedSearch(string $query, array $fields = ['name', 'description'], array $filters = [], int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('a');
+        $qb = $this->createQueryBuilder($this->defaultAlias);
         
         // Aplikovat filtry
         $qb = $this->applyFilters($qb, $filters);
@@ -283,9 +277,10 @@ class AddonRepository extends BaseRepository implements IAddonRepository
             
             foreach ($keywords as $keyword) {
                 foreach ($fields as $field) {
-                    if (property_exists(Addon::class, $field)) {
-                        $orExpressions->add($qb->expr()->like('a.' . $field, ':keyword_' . md5($keyword . $field)));
-                        $qb->setParameter('keyword_' . md5($keyword . $field), '%' . $keyword . '%');
+                    if ($this->hasProperty($field)) {
+                        $paramKey = 'search_' . md5($keyword . $field);
+                        $orExpressions->add($qb->expr()->like("$this->defaultAlias.$field", ":$paramKey"));
+                        $qb->setParameter($paramKey, '%' . $keyword . '%');
                     }
                 }
             }
@@ -298,11 +293,11 @@ class AddonRepository extends BaseRepository implements IAddonRepository
         // Řazení: pokud je zadaný dotaz, řadíme podle relevance (stažení)
         // jinak podle zadaného řazení ve filtrech nebo výchozí podle názvu
         if (!empty($query)) {
-            $qb->orderBy('a.downloads_count', 'DESC');
+            $qb->orderBy("$this->defaultAlias.downloads_count", 'DESC');
         } elseif (isset($filters['sort_by']) && isset($filters['sort_dir'])) {
-            $qb->orderBy('a.' . $filters['sort_by'], $filters['sort_dir']);
+            $qb->orderBy("$this->defaultAlias." . $filters['sort_by'], $filters['sort_dir']);
         } else {
-            $qb->orderBy('a.name', 'ASC');
+            $qb->orderBy("$this->defaultAlias.name", 'ASC');
         }
         
         return $this->paginate($qb, $page, $itemsPerPage);
@@ -318,13 +313,11 @@ class AddonRepository extends BaseRepository implements IAddonRepository
             return 0;
         }
         
-        $this->entityManager->beginTransaction();
-        
-        try {
+        return $this->transaction(function() use ($addon, $id, $ipAddress, $userAgent) {
             // Zvýšit počítadlo stažení
             $addon->incrementDownloadsCount();
             
-            // Přidat záznam do tabulky downloads_log (pokud existuje)
+            // Přidat záznam do tabulky downloads_log (pokud jsou poskytnuty údaje)
             if ($ipAddress !== null) {
                 $conn = $this->entityManager->getConnection();
                 $now = new \DateTime();
@@ -338,13 +331,9 @@ class AddonRepository extends BaseRepository implements IAddonRepository
             }
             
             $this->entityManager->flush();
-            $this->entityManager->commit();
             
             return 1;
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
+        });
     }
     
     /**
@@ -381,16 +370,9 @@ class AddonRepository extends BaseRepository implements IAddonRepository
     {
         $this->validateAddon($addon);
         
-        $this->entityManager->beginTransaction();
-        
-        try {
+        return $this->transaction(function() use ($addon, $screenshots, $tagIds) {
             // Nastavit časová razítka
-            if (empty($addon->getCreatedAt())) {
-                $addon->setCreatedAt(new \DateTime());
-            }
-            if (empty($addon->getUpdatedAt())) {
-                $addon->setUpdatedAt(new \DateTime());
-            }
+            $this->updateTimestamps($addon);
             
             // Uložit doplněk
             $this->entityManager->persist($addon);
@@ -411,13 +393,9 @@ class AddonRepository extends BaseRepository implements IAddonRepository
             }
             
             $this->entityManager->flush();
-            $this->entityManager->commit();
             
             return $addon->getId();
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
+        });
     }
     
     /**
@@ -432,11 +410,9 @@ class AddonRepository extends BaseRepository implements IAddonRepository
         
         $this->validateAddon($addon);
         
-        $this->entityManager->beginTransaction();
-        
-        try {
+        return $this->transaction(function() use ($addon, $screenshots, $tagIds) {
             // Aktualizovat časové razítko
-            $addon->setUpdatedAt(new \DateTime());
+            $this->updateTimestamps($addon, false);
             
             // Odstranit existující screenshoty
             foreach ($addon->getScreenshots() as $screenshot) {
@@ -466,13 +442,9 @@ class AddonRepository extends BaseRepository implements IAddonRepository
             
             $this->entityManager->persist($addon);
             $this->entityManager->flush();
-            $this->entityManager->commit();
             
             return $addon->getId();
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
+        });
     }
     
     /**
@@ -528,9 +500,8 @@ class AddonRepository extends BaseRepository implements IAddonRepository
            ->setMaxResults($limit);
         
         $stmt = $qb->executeQuery();
-        $result = $stmt->fetchAllAssociative();
         
-        return $result;
+        return $stmt->fetchAllAssociative();
     }
     
     /**
@@ -791,19 +762,26 @@ class AddonRepository extends BaseRepository implements IAddonRepository
      */
     public function createFilteredQueryBuilder(array $filters = []): QueryBuilder
     {
-        $qb = $this->createQueryBuilder('a');
+        $qb = $this->createQueryBuilder($this->defaultAlias);
         return $this->applyFilters($qb, $filters);
     }
     
     /**
-     * Aplikuje filtry na QueryBuilder
+     * Aplikuje filtry na QueryBuilder, rozšíření metody z BaseRepository
      * 
      * @param QueryBuilder $qb QueryBuilder pro doplňky
      * @param array $filters Pole filtrů
      * @return QueryBuilder Upravený QueryBuilder
      */
-    protected function applyFilters(QueryBuilder $qb, array $filters): QueryBuilder
+    protected function applyFilters(QueryBuilder $qb, array $filters, string $alias = null): QueryBuilder
     {
+        // Pokud alias není zadán, použít výchozí alias
+        $alias = $alias ?? $this->defaultAlias;
+        
+        // Nejprve aplikovat standardní filtry z nadřazené třídy
+        $qb = parent::applyFilters($qb, $filters, $alias);
+        
+        // Pak aplikovat speciální filtry specifické pro doplňky
         foreach ($filters as $key => $value) {
             if ($value === null || $value === '' || $key === 'sort_by' || $key === 'sort_dir') {
                 continue;
@@ -816,10 +794,10 @@ class AddonRepository extends BaseRepository implements IAddonRepository
                             fn($id) => $this->entityManager->getReference(Category::class, $id),
                             $value
                         );
-                        $qb->andWhere('a.category IN (:categories)')
+                        $qb->andWhere("$alias.category IN (:categories)")
                            ->setParameter('categories', $categories);
                     } else if (!is_array($value) && $value) {
-                        $qb->andWhere('a.category = :category')
+                        $qb->andWhere("$alias.category = :category")
                            ->setParameter('category', $this->entityManager->getReference(Category::class, $value));
                     }
                     break;
@@ -830,10 +808,10 @@ class AddonRepository extends BaseRepository implements IAddonRepository
                             fn($id) => $this->entityManager->getReference(Author::class, $id),
                             $value
                         );
-                        $qb->andWhere('a.author IN (:authors)')
+                        $qb->andWhere("$alias.author IN (:authors)")
                            ->setParameter('authors', $authors);
                     } else if (!is_array($value) && $value) {
-                        $qb->andWhere('a.author = :author')
+                        $qb->andWhere("$alias.author = :author")
                            ->setParameter('author', $this->entityManager->getReference(Author::class, $value));
                     }
                     break;
@@ -844,64 +822,21 @@ class AddonRepository extends BaseRepository implements IAddonRepository
                             fn($id) => $this->entityManager->getReference(Tag::class, $id),
                             $value
                         );
-                        $qb->join('a.tags', 'tag')
+                        $qb->join("$alias.tags", 'tag')
                            ->andWhere('tag IN (:tags)')
                            ->setParameter('tags', $tags);
                     } else if (!is_array($value) && $value) {
                         $tag = $this->entityManager->getReference(Tag::class, $value);
-                        $qb->join('a.tags', 'tag')
+                        $qb->join("$alias.tags", 'tag')
                            ->andWhere('tag = :tag')
                            ->setParameter('tag', $tag);
                     }
                     break;
                 
-                case 'min_rating':
-                    $qb->andWhere('a.rating >= :minRating')
-                       ->setParameter('minRating', (float)$value);
-                    break;
-                
-                case 'max_rating':
-                    $qb->andWhere('a.rating <= :maxRating')
-                       ->setParameter('maxRating', (float)$value);
-                    break;
-                
-                case 'min_downloads':
-                    $qb->andWhere('a.downloads_count >= :minDownloads')
-                       ->setParameter('minDownloads', (int)$value);
-                    break;
-                
-                case 'max_downloads':
-                    $qb->andWhere('a.downloads_count <= :maxDownloads')
-                       ->setParameter('maxDownloads', (int)$value);
-                    break;
-                
                 case 'kodi_version':
-                    $qb->andWhere('(a.kodi_version_min IS NULL OR a.kodi_version_min <= :kodiVersion)')
-                       ->andWhere('(a.kodi_version_max IS NULL OR a.kodi_version_max >= :kodiVersion)')
+                    $qb->andWhere("($alias.kodi_version_min IS NULL OR $alias.kodi_version_min <= :kodiVersion)")
+                       ->andWhere("($alias.kodi_version_max IS NULL OR $alias.kodi_version_max >= :kodiVersion)")
                        ->setParameter('kodiVersion', $value);
-                    break;
-                
-                case 'created_after':
-                    if ($value instanceof \DateTime) {
-                        $qb->andWhere('a.created_at >= :createdAfter')
-                           ->setParameter('createdAfter', $value);
-                    }
-                    break;
-                
-                case 'created_before':
-                    if ($value instanceof \DateTime) {
-                        $qb->andWhere('a.created_at <= :createdBefore')
-                           ->setParameter('createdBefore', $value);
-                    }
-                    break;
-                
-                default:
-                    // Pro standardní pole entity
-                    $reflectionClass = new \ReflectionClass(Addon::class);
-                    if ($reflectionClass->hasProperty($key)) {
-                        $qb->andWhere("a.$key = :$key")
-                           ->setParameter($key, $value);
-                    }
                     break;
             }
         }
@@ -939,10 +874,10 @@ class AddonRepository extends BaseRepository implements IAddonRepository
         
         // Kontrola slugu, případně vytvoření z názvu
         if (empty($addon->getSlug())) {
-        // Použití factory pro vytvoření inflektoru
-        $inflector = \Doctrine\Inflector\InflectorFactory::create()->build();
-        $slug = $inflector->urlize($addon->getName());
-        $addon->setSlug($slug);
-}
+            // Použití factory pro vytvoření inflektoru
+            $inflector = \Doctrine\Inflector\InflectorFactory::create()->build();
+            $slug = $inflector->urlize($addon->getName());
+            $addon->setSlug($slug);
         }
     }
+}

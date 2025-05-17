@@ -25,6 +25,7 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
     protected EntityManagerInterface $entityManager;
     protected string $entityClass;
     protected ClassMetadata $metadata;
+    protected string $defaultAlias = 'e';
 
     // -------------------------------------------------------------------------
     // KONSTRUKTOR A INICIALIZACE
@@ -78,6 +79,22 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
      */
     public function save(object $entity): int
     {
+        $this->updateTimestamps($entity);
+        $this->entityManager->persist($entity);
+        $this->entityManager->flush();
+        
+        return $entity->getId();
+    }
+
+    /**
+     * Aktualizuje existující entitu
+     * 
+     * @param T $entity Entita k aktualizaci
+     * @return int ID aktualizované entity
+     */
+    protected function updateEntity(object $entity): int
+    {
+        $this->updateTimestamps($entity, false);
         $this->entityManager->persist($entity);
         $this->entityManager->flush();
         
@@ -144,11 +161,15 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
      */
     public function findWithPagination(array $criteria = [], int $page = 1, int $itemsPerPage = 10, string $orderColumn = 'id', string $orderDir = 'ASC'): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('e');
-        $qb = $this->applyArrayCriteria($qb, $criteria, 'e');
+        $qb = $this->createQueryBuilder($this->defaultAlias);
+        $qb = $this->applyArrayCriteria($qb, $criteria, $this->defaultAlias);
         
         // Apply ordering
-        $qb->orderBy("e.$orderColumn", $orderDir);
+        if ($this->hasProperty($orderColumn)) {
+            $qb->orderBy("$this->defaultAlias.$orderColumn", $orderDir);
+        } else {
+            $qb->orderBy("$this->defaultAlias.id", 'ASC');
+        }
         
         return $this->paginate($qb, $page, $itemsPerPage);
     }
@@ -177,13 +198,13 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
      */
     public function findWithFilters(array $filters = [], string $sortBy = 'id', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('e');
-        $qb = $this->applyFilters($qb, $filters, 'e');
+        $qb = $this->createQueryBuilder($this->defaultAlias);
+        $qb = $this->applyFilters($qb, $filters, $this->defaultAlias);
         
         if ($this->hasProperty($sortBy)) {
-            $qb->orderBy("e.$sortBy", $sortDir);
+            $qb->orderBy("$this->defaultAlias.$sortBy", $sortDir);
         } else {
-            $qb->orderBy('e.id', 'ASC');
+            $qb->orderBy("$this->defaultAlias.id", 'ASC');
         }
         
         return $this->paginate($qb, $page, $itemsPerPage);
@@ -200,11 +221,11 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
      */
     public function findByRelation(string $relation, int $id, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('e')
-            ->join("e.$relation", 'r')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->join("$this->defaultAlias.$relation", 'r')
             ->where('r.id = :id')
             ->setParameter('id', $id)
-            ->orderBy('e.id', 'DESC');
+            ->orderBy("$this->defaultAlias.id", 'DESC');
         
         return $this->paginate($qb, $page, $itemsPerPage);
     }
@@ -254,10 +275,10 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
      */
     public function count(array $criteria = []): int
     {
-        $qb = $this->createQueryBuilder('e')
-            ->select('COUNT(e.id)');
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->select("COUNT($this->defaultAlias.id)");
         
-        $qb = $this->applyArrayCriteria($qb, $criteria, 'e');
+        $qb = $this->applyArrayCriteria($qb, $criteria, $this->defaultAlias);
         
         return (int) $qb->getQuery()->getSingleScalarResult();
     }
@@ -315,6 +336,7 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
                 $entity->setDeletionReason($reason);
             }
             
+            $this->updateTimestamps($entity, false);
             $this->entityManager->flush();
             return true;
         });
@@ -345,6 +367,7 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
                 $entity->setDeletionReason(null);
             }
             
+            $this->updateTimestamps($entity, false);
             $this->entityManager->flush();
             return true;
         });
@@ -388,8 +411,9 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
      */
     public function transaction(callable $callback)
     {
+        $this->beginTransaction();
+        
         try {
-            $this->beginTransaction();
             $result = $callback();
             $this->commit();
             return $result;
@@ -404,6 +428,29 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
     // -------------------------------------------------------------------------
 
     /**
+     * Nastaví časová razítka entity (created_at, updated_at)
+     * 
+     * @param object $entity Entity k aktualizaci razítek
+     * @param bool $isNew Příznak, zda jde o novou entitu (pro created_at)
+     */
+    protected function updateTimestamps(object $entity, bool $isNew = true): void
+    {
+        $now = new \DateTime();
+        
+        if ($isNew && method_exists($entity, 'setCreatedAt')) {
+            // Nastavit created_at pouze pokud ještě nebylo nastaveno
+            $getCurrentCreatedAt = 'getCreatedAt';
+            if (method_exists($entity, $getCurrentCreatedAt) && $entity->$getCurrentCreatedAt() === null) {
+                $entity->setCreatedAt($now);
+            }
+        }
+        
+        if (method_exists($entity, 'setUpdatedAt')) {
+            $entity->setUpdatedAt($now);
+        }
+    }
+
+    /**
      * Pomocná metoda pro stránkování výsledků
      * 
      * @param QueryBuilder $qb Query builder instance
@@ -413,6 +460,9 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
      */
     protected function paginate(QueryBuilder $qb, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
+        // Zajistit, že stránka je alespoň 1
+        $page = max(1, $page);
+        
         $paginator = new Paginator($qb);
         $paginator->getQuery()
             ->setFirstResult(($page - 1) * $itemsPerPage)
@@ -479,7 +529,7 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
      */
     protected function applyFilter(QueryBuilder $qb, string $field, $value, string $operator = 'eq', string $alias = 'e'): void
     {
-        $paramName = str_replace('.', '_', $field);
+        $paramName = str_replace('.', '_', $field) . '_' . md5(serialize($value));
         
         switch ($operator) {
             case 'eq':
@@ -611,6 +661,12 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
                     }
                 }
                 break;
+                
+            case '_search':
+                if (is_array($value) && isset($value['term']) && isset($value['fields'])) {
+                    $this->applySearchOperator($qb, $value['term'], $value['fields'], $alias);
+                }
+                break;
         }
     }
     
@@ -632,6 +688,37 @@ abstract class BaseRepository extends EntityRepository implements IBaseRepositor
                 $qb->andWhere("$alias.$field = :$field")
                    ->setParameter($field, $value);
             }
+        }
+        
+        return $qb;
+    }
+    
+    /**
+     * Aplikuje vyhledávání podle textu přes více polí
+     * 
+     * @param QueryBuilder $qb
+     * @param string $term Hledaný výraz
+     * @param array $fields Pole názvů sloupců pro hledání
+     * @param string $alias
+     * @return QueryBuilder
+     */
+    protected function applySearchOperator(QueryBuilder $qb, string $term, array $fields, string $alias = 'e'): QueryBuilder
+    {
+        if (empty($term) || empty($fields)) {
+            return $qb;
+        }
+        
+        $orX = $qb->expr()->orX();
+        foreach ($fields as $field) {
+            if ($this->hasProperty($field)) {
+                $paramName = 'search_' . $field;
+                $orX->add($qb->expr()->like("$alias.$field", ":$paramName"));
+                $qb->setParameter($paramName, '%' . $term . '%');
+            }
+        }
+        
+        if ($orX->count() > 0) {
+            $qb->andWhere($orX);
         }
         
         return $qb;

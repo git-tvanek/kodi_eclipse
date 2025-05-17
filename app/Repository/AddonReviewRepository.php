@@ -11,19 +11,17 @@ use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IReviewRepository;
 use Doctrine\ORM\EntityManagerInterface;
-use Doctrine\ORM\QueryBuilder;
-use Doctrine\ORM\Tools\Pagination\Paginator;
 use Doctrine\ORM\NoResultException;
-use Doctrine\ORM\Cache\DefaultQueryCache;
 use Psr\Cache\CacheItemPoolInterface;
 
 /**
  * Repozitář pro práci s recenzemi doplňků
  * 
- * @extends BaseDoctrineRepository<AddonReview>
+ * @extends BaseRepository<AddonReview>
  */
 class AddonReviewRepository extends BaseRepository implements IReviewRepository
 {
+    protected string $defaultAlias = 'r';
     private ?CacheItemPoolInterface $cache;
 
     /**
@@ -38,6 +36,12 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
         $this->cache = $cache;
     }
     
+    /**
+     * Vytvoří typovanou kolekci recenzí
+     * 
+     * @param array<AddonReview> $entities
+     * @return Collection<AddonReview>
+     */
     protected function createCollection(array $entities): Collection
     {
         return new Collection($entities);
@@ -52,9 +56,7 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
      */
     public function create(AddonReview $review): int
     {
-        $this->entityManager->beginTransaction();
-        
-        try {
+        return $this->transaction(function() use ($review) {
             // Kontrola, zda uživatel již nehodnotil tento doplněk
             if ($review->getUser() !== null) {
                 $existingReview = $this->findOneBy([
@@ -67,21 +69,17 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
                 }
             }
             
+            $this->updateTimestamps($review);
             $this->entityManager->persist($review);
             $this->entityManager->flush();
             
             // Aktualizace hodnocení doplňku
             $this->updateAddonRating($review->getAddon());
             
-            $this->entityManager->commit();
-            
             $this->invalidateCache($review->getAddon()->getId());
             
             return $review->getId();
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
+        });
     }
     
     /**
@@ -93,24 +91,18 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
      */
     public function update(AddonReview $review): int
     {
-        $this->entityManager->beginTransaction();
-        
-        try {
+        return $this->transaction(function() use ($review) {
+            $this->updateTimestamps($review, false);
             $this->entityManager->persist($review);
             $this->entityManager->flush();
             
             // Aktualizace hodnocení doplňku
             $this->updateAddonRating($review->getAddon());
             
-            $this->entityManager->commit();
-            
             $this->invalidateCache($review->getAddon()->getId());
             
             return $review->getId();
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
+        });
     }
     
     /**
@@ -128,24 +120,18 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
         
         $addonId = $review->getAddon()->getId();
         
-        $this->entityManager->beginTransaction();
-        
-        try {
+        return $this->transaction(function() use ($review) {
+            $addon = $review->getAddon();
             $this->entityManager->remove($review);
             $this->entityManager->flush();
             
             // Aktualizace hodnocení doplňku
-            $this->updateAddonRating($review->getAddon());
+            $this->updateAddonRating($addon);
             
-            $this->entityManager->commit();
-            
-            $this->invalidateCache($addonId);
+            $this->invalidateCache($addon->getId());
             
             return 1;
-        } catch (\Exception $e) {
-            $this->entityManager->rollback();
-            throw $e;
-        }
+        });
     }
     
     /**
@@ -193,18 +179,18 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
             }
         }
         
-        $qb = $this->createQueryBuilder('r')
-            ->where('r.addon = :addon')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->where("$this->defaultAlias.addon = :addon")
             ->setParameter('addon', $this->entityManager->getReference(Addon::class, $addonId))
-            ->orderBy('r.created_at', 'DESC');
+            ->orderBy("$this->defaultAlias.created_at", 'DESC');
         
         if ($activeOnly) {
-            $qb->andWhere('r.is_active = :active')
+            $qb->andWhere("$this->defaultAlias.is_active = :active")
                ->setParameter('active', true);
         }
         
         $reviews = $qb->getQuery()->getResult();
-        $collection = new Collection($reviews);
+        $collection = $this->createCollection($reviews);
         
         if ($this->cache !== null) {
             $cacheItem = $this->cache->getItem($cacheKey);
@@ -226,10 +212,10 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
      */
     public function findByUser(int $userId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('r')
-            ->where('r.user = :user')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->where("$this->defaultAlias.user = :user")
             ->setParameter('user', $this->entityManager->getReference(User::class, $userId))
-            ->orderBy('r.created_at', 'DESC');
+            ->orderBy("$this->defaultAlias.created_at", 'DESC');
         
         return $this->paginate($qb, $page, $itemsPerPage);
     }
@@ -246,99 +232,28 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
      */
     public function findWithFilters(array $filters = [], string $sortBy = 'created_at', string $sortDir = 'DESC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('r');
+        $qb = $this->createQueryBuilder($this->defaultAlias);
         
-        // Apply filters
-        foreach ($filters as $key => $value) {
-            if ($value === null || $value === '') {
-                continue;
-            }
-            
-            switch ($key) {
-                case 'addon_id':
-                    $qb->andWhere('r.addon = :addon')
-                       ->setParameter('addon', $this->entityManager->getReference(Addon::class, $value));
-                    break;
-                
-                case 'user_id':
-                    $qb->andWhere('r.user = :user')
-                       ->setParameter('user', $this->entityManager->getReference(User::class, $value));
-                    break;
-                
-                case 'email':
-                    $qb->andWhere('r.email LIKE :email')
-                       ->setParameter('email', '%' . $value . '%');
-                    break;
-                
-                case 'name':
-                    $qb->andWhere('r.name LIKE :name')
-                       ->setParameter('name', '%' . $value . '%');
-                    break;
-                
-                case 'min_rating':
-                    $qb->andWhere('r.rating >= :minRating')
-                       ->setParameter('minRating', $value);
-                    break;
-                
-                case 'max_rating':
-                    $qb->andWhere('r.rating <= :maxRating')
-                       ->setParameter('maxRating', $value);
-                    break;
-                
-                case 'has_comment':
-                    if ($value) {
-                        $qb->andWhere('r.comment IS NOT NULL')
-                           ->andWhere('r.comment != :emptyString')
-                           ->setParameter('emptyString', '');
-                    } else {
-                        $qb->andWhere('r.comment IS NULL OR r.comment = :emptyString')
-                           ->setParameter('emptyString', '');
-                    }
-                    break;
-                
-                case 'is_verified':
-                    $qb->andWhere('r.is_verified = :isVerified')
-                       ->setParameter('isVerified', (bool)$value);
-                    break;
-                
-                case 'is_active':
-                    $qb->andWhere('r.is_active = :isActive')
-                       ->setParameter('isActive', (bool)$value);
-                    break;
-                
-                case 'created_after':
-                    if ($value instanceof \DateTime) {
-                        $qb->andWhere('r.created_at >= :createdAfter')
-                           ->setParameter('createdAfter', $value);
-                    }
-                    break;
-                
-                case 'created_before':
-                    if ($value instanceof \DateTime) {
-                        $qb->andWhere('r.created_at <= :createdBefore')
-                           ->setParameter('createdBefore', $value);
-                    }
-                    break;
-                
-                case 'search':
-                    $qb->andWhere('r.comment LIKE :search OR r.name LIKE :search')
-                       ->setParameter('search', '%' . $value . '%');
-                    break;
-                
-                default:
-                    if (property_exists(AddonReview::class, $key)) {
-                        $qb->andWhere("r.$key = :$key")
-                           ->setParameter($key, $value);
-                    }
-                    break;
+        // Aplikovat standardní filtry pomocí metody z předka
+        $qb = $this->applyFilters($qb, $filters, $this->defaultAlias);
+        
+        // Přidat speciální filtry pro AddonReview
+        if (isset($filters['has_comment']) && $filters['has_comment'] !== null) {
+            if ($filters['has_comment']) {
+                $qb->andWhere("$this->defaultAlias.comment IS NOT NULL")
+                   ->andWhere("$this->defaultAlias.comment != :emptyString")
+                   ->setParameter('emptyString', '');
+            } else {
+                $qb->andWhere("$this->defaultAlias.comment IS NULL OR $this->defaultAlias.comment = :emptyString")
+                   ->setParameter('emptyString', '');
             }
         }
         
-        // Apply ordering
-        if (property_exists(AddonReview::class, $sortBy)) {
-            $qb->orderBy("r.$sortBy", $sortDir);
+        // Apply sorting
+        if ($this->hasProperty($sortBy)) {
+            $qb->orderBy("$this->defaultAlias.$sortBy", $sortDir);
         } else {
-            $qb->orderBy('r.created_at', 'DESC');
+            $qb->orderBy("$this->defaultAlias.created_at", 'DESC');
         }
         
         return $this->paginate($qb, $page, $itemsPerPage);
@@ -362,17 +277,17 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
             }
         }
         
-        $qb = $this->createQueryBuilder('r')
-            ->select('COUNT(r.id) as total')
-            ->addSelect('SUM(CASE WHEN r.rating >= 4 THEN 1 ELSE 0 END) as positive')
-            ->addSelect('SUM(CASE WHEN r.rating = 3 THEN 1 ELSE 0 END) as neutral')
-            ->addSelect('SUM(CASE WHEN r.rating <= 2 THEN 1 ELSE 0 END) as negative')
-            ->addSelect('AVG(r.rating) as avgRating')
-            ->where('r.addon = :addon')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->select("COUNT($this->defaultAlias.id) as total")
+            ->addSelect("SUM(CASE WHEN $this->defaultAlias.rating >= 4 THEN 1 ELSE 0 END) as positive")
+            ->addSelect("SUM(CASE WHEN $this->defaultAlias.rating = 3 THEN 1 ELSE 0 END) as neutral")
+            ->addSelect("SUM(CASE WHEN $this->defaultAlias.rating <= 2 THEN 1 ELSE 0 END) as negative")
+            ->addSelect("AVG($this->defaultAlias.rating) as avgRating")
+            ->where("$this->defaultAlias.addon = :addon")
             ->setParameter('addon', $this->entityManager->getReference(Addon::class, $addonId));
         
         if ($activeOnly) {
-            $qb->andWhere('r.is_active = :active')
+            $qb->andWhere("$this->defaultAlias.is_active = :active")
                ->setParameter('active', true);
         }
         
@@ -435,27 +350,27 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
         switch ($interval) {
             case 'day':
                 $dateFormat = 'Y-m-d';
-                $dateExpression = "DATE_FORMAT(r.created_at, '%Y-%m-%d')";
+                $dateExpression = "DATE_FORMAT($this->defaultAlias.created_at, '%Y-%m-%d')";
                 $dateInterval = 'P1D';
                 break;
             case 'week':
                 $dateFormat = 'Y-W';
-                $dateExpression = "CONCAT(YEAR(r.created_at), '-', WEEK(r.created_at))";
+                $dateExpression = "CONCAT(YEAR($this->defaultAlias.created_at), '-', WEEK($this->defaultAlias.created_at))";
                 $dateInterval = 'P1W';
                 break;
             case 'month':
                 $dateFormat = 'Y-m';
-                $dateExpression = "DATE_FORMAT(r.created_at, '%Y-%m')";
+                $dateExpression = "DATE_FORMAT($this->defaultAlias.created_at, '%Y-%m')";
                 $dateInterval = 'P1M';
                 break;
             case 'year':
                 $dateFormat = 'Y';
-                $dateExpression = "YEAR(r.created_at)";
+                $dateExpression = "YEAR($this->defaultAlias.created_at)";
                 $dateInterval = 'P1Y';
                 break;
             default:
                 $dateFormat = 'Y-m';
-                $dateExpression = "DATE_FORMAT(r.created_at, '%Y-%m')";
+                $dateExpression = "DATE_FORMAT($this->defaultAlias.created_at, '%Y-%m')";
                 $dateInterval = 'P1M';
         }
         
@@ -483,14 +398,14 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
         $sql = "
             SELECT 
                 {$dateExpression} AS period,
-                COUNT(r.id) AS review_count,
-                AVG(r.rating) AS avg_rating
-            FROM addon_reviews r
-            WHERE r.addon_id = :addonId
+                COUNT($this->defaultAlias.id) AS review_count,
+                AVG($this->defaultAlias.rating) AS avg_rating
+            FROM addon_reviews $this->defaultAlias
+            WHERE $this->defaultAlias.addon_id = :addonId
         ";
         
         if ($activeOnly) {
-            $sql .= " AND r.is_active = :active";
+            $sql .= " AND $this->defaultAlias.is_active = :active";
         }
         
         $sql .= "
@@ -638,11 +553,11 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
      */
     public function getMostRecentReviews(int $limit = 10): array
     {
-        $qb = $this->createQueryBuilder('r')
-            ->join('r.addon', 'a')
-            ->where('r.is_active = :active')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->join("$this->defaultAlias.addon", 'a')
+            ->where("$this->defaultAlias.is_active = :active")
             ->setParameter('active', true)
-            ->orderBy('r.created_at', 'DESC')
+            ->orderBy("$this->defaultAlias.created_at", 'DESC')
             ->setMaxResults($limit);
         
         $reviews = $qb->getQuery()->getResult();
@@ -679,6 +594,7 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
             }
             
             $review->setIsVerified($verified);
+            $this->updateTimestamps($review, false);
             $this->entityManager->flush();
             
             $this->invalidateCache($review->getAddon()->getId());
@@ -706,6 +622,7 @@ class AddonReviewRepository extends BaseRepository implements IReviewRepository
             }
             
             $review->setIsActive($active);
+            $this->updateTimestamps($review, false);
             $this->entityManager->flush();
             
             // Aktualizuje hodnocení doplňku

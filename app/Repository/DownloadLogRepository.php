@@ -6,16 +6,20 @@ namespace App\Repository;
 
 use App\Entity\DownloadLog;
 use App\Entity\Addon;
+use App\Collection\Collection;
+use App\Collection\PaginatedCollection;
 use App\Repository\Interface\IDownloadLogRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Repozitář pro práci se záznamy stažení
  * 
- * @extends BaseDoctrineRepository<DownloadLog>
+ * @extends BaseRepository<DownloadLog>
  */
 class DownloadLogRepository extends BaseRepository implements IDownloadLogRepository
 {
+    protected string $defaultAlias = 'dl';
+    
     /**
      * Konstruktor
      * 
@@ -24,6 +28,17 @@ class DownloadLogRepository extends BaseRepository implements IDownloadLogReposi
     public function __construct(EntityManagerInterface $entityManager)
     {
         parent::__construct($entityManager, DownloadLog::class);
+    }
+    
+    /**
+     * Vytvoří typovanou kolekci záznamů stažení
+     * 
+     * @param array<DownloadLog> $entities
+     * @return Collection<DownloadLog>
+     */
+    protected function createCollection(array $entities): Collection
+    {
+        return new Collection($entities);
     }
     
     /**
@@ -36,15 +51,18 @@ class DownloadLogRepository extends BaseRepository implements IDownloadLogReposi
      */
     public function create(Addon $addon, ?string $ipAddress = null, ?string $userAgent = null): int
     {
-        $log = new DownloadLog();
-        $log->setAddon($addon);
-        $log->setIpAddress($ipAddress);
-        $log->setUserAgent($userAgent);
-        
-        $this->entityManager->persist($log);
-        $this->entityManager->flush();
-        
-        return $log->getId();
+        return $this->transaction(function() use ($addon, $ipAddress, $userAgent) {
+            $log = new DownloadLog();
+            $log->setAddon($addon);
+            $log->setIpAddress($ipAddress);
+            $log->setUserAgent($userAgent);
+            
+            $this->updateTimestamps($log);
+            $this->entityManager->persist($log);
+            $this->entityManager->flush();
+            
+            return $log->getId();
+        });
     }
     
     /**
@@ -57,18 +75,18 @@ class DownloadLogRepository extends BaseRepository implements IDownloadLogReposi
      */
     public function getDownloadCount(int $addonId, ?\DateTime $startDate = null, ?\DateTime $endDate = null): int
     {
-        $qb = $this->createQueryBuilder('dl')
-            ->select('COUNT(dl.id)')
-            ->where('dl.addon = :addon')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->select("COUNT($this->defaultAlias.id)")
+            ->where("$this->defaultAlias.addon = :addon")
             ->setParameter('addon', $this->entityManager->getReference(Addon::class, $addonId));
         
         if ($startDate !== null) {
-            $qb->andWhere('dl.created_at >= :startDate')
+            $qb->andWhere("$this->defaultAlias.created_at >= :startDate")
                ->setParameter('startDate', $startDate);
         }
         
         if ($endDate !== null) {
-            $qb->andWhere('dl.created_at <= :endDate')
+            $qb->andWhere("$this->defaultAlias.created_at <= :endDate")
                ->setParameter('endDate', $endDate);
         }
         
@@ -85,10 +103,10 @@ class DownloadLogRepository extends BaseRepository implements IDownloadLogReposi
      */
     public function findByAddon(int $addonId, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('dl')
-            ->where('dl.addon = :addon')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->where("$this->defaultAlias.addon = :addon")
             ->setParameter('addon', $this->entityManager->getReference(Addon::class, $addonId))
-            ->orderBy('dl.created_at', 'DESC');
+            ->orderBy("$this->defaultAlias.created_at", 'DESC');
             
         return $this->paginate($qb, $page, $itemsPerPage);
     }
@@ -104,12 +122,12 @@ class DownloadLogRepository extends BaseRepository implements IDownloadLogReposi
      */
     public function findByDateRange(\DateTime $startDate, \DateTime $endDate, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $qb = $this->createQueryBuilder('dl')
-            ->where('dl.created_at >= :startDate')
-            ->andWhere('dl.created_at <= :endDate')
+        $qb = $this->createQueryBuilder($this->defaultAlias)
+            ->where("$this->defaultAlias.created_at >= :startDate")
+            ->andWhere("$this->defaultAlias.created_at <= :endDate")
             ->setParameter('startDate', $startDate)
             ->setParameter('endDate', $endDate)
-            ->orderBy('dl.created_at', 'DESC');
+            ->orderBy("$this->defaultAlias.created_at", 'DESC');
             
         return $this->paginate($qb, $page, $itemsPerPage);
     }
@@ -123,11 +141,11 @@ class DownloadLogRepository extends BaseRepository implements IDownloadLogReposi
     public function getDownloadsByHourOfDay(?\DateTime $startDate = null): array
     {
         $qb = $this->entityManager->createQueryBuilder();
-        $qb->select('HOUR(dl.created_at) as hour', 'COUNT(dl.id) as download_count')
-           ->from(DownloadLog::class, 'dl');
+        $qb->select("HOUR($this->defaultAlias.created_at) as hour", "COUNT($this->defaultAlias.id) as download_count")
+           ->from(DownloadLog::class, $this->defaultAlias);
         
         if ($startDate !== null) {
-            $qb->where('dl.created_at >= :startDate')
+            $qb->where("$this->defaultAlias.created_at >= :startDate")
                ->setParameter('startDate', $startDate);
         }
         
@@ -170,22 +188,22 @@ class DownloadLogRepository extends BaseRepository implements IDownloadLogReposi
                 break;
             case 'week':
                 $dateFormat = 'Y-W';
-                $dbFormat = 'CONCAT(YEAR(dl.created_at), \'-\', WEEK(dl.created_at))';
+                $dbFormat = "CONCAT(YEAR($this->defaultAlias.created_at), '-', WEEK($this->defaultAlias.created_at))";
                 $dateInterval = 'P1W';
                 break;
             case 'month':
                 $dateFormat = 'Y-m';
-                $dbFormat = 'DATE_FORMAT(dl.created_at, \'%Y-%m\')';
+                $dbFormat = "DATE_FORMAT($this->defaultAlias.created_at, '%Y-%m')";
                 $dateInterval = 'P1M';
                 break;
             case 'year':
                 $dateFormat = 'Y';
-                $dbFormat = 'YEAR(dl.created_at)';
+                $dbFormat = "YEAR($this->defaultAlias.created_at)";
                 $dateInterval = 'P1Y';
                 break;
             default:
                 $dateFormat = 'Y-m';
-                $dbFormat = 'DATE_FORMAT(dl.created_at, \'%Y-%m\')';
+                $dbFormat = "DATE_FORMAT($this->defaultAlias.created_at, '%Y-%m')";
                 $dateInterval = 'P1M';
         }
         
@@ -208,8 +226,8 @@ class DownloadLogRepository extends BaseRepository implements IDownloadLogReposi
         
         // Získání dat z databáze
         $qb = $this->entityManager->createQueryBuilder();
-        $qb->select("$dbFormat AS period", 'COUNT(dl.id) AS download_count')
-           ->from(DownloadLog::class, 'dl')
+        $qb->select("$dbFormat AS period", "COUNT($this->defaultAlias.id) AS download_count")
+           ->from(DownloadLog::class, $this->defaultAlias)
            ->groupBy('period')
            ->orderBy('period', 'ASC');
         
