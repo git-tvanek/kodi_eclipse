@@ -47,9 +47,20 @@ class AddonRepository extends BaseRepository implements IAddonRepository
      * @param array<Addon> $entities Pole entit
      * @return Collection<Addon> Typovaná kolekce
      */
-    protected function createCollection(array $entities): Collection
+    /**protected function createCollection(array $entities): Collection
     {
         return new AddonCollection($entities);
+    }*/
+
+    /**
+    * Vytvoří typovanou kolekci doplňků
+    * 
+    * @param array<Addon> $entities Pole entit
+    * @return Collection<Addon> Typovaná kolekce
+    */
+    protected function createCollection(array $entities): Collection
+    {
+    return new Collection($entities); // Namísto AddonCollection použijeme základní Collection
     }
     
     /**

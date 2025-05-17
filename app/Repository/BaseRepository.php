@@ -249,40 +249,40 @@ public function findBy(array $criteria = [], ?array $orderBy = null, $limit = nu
     // -------------------------------------------------------------------------
 
     /**
-     * Pomocná metoda pro stránkování výsledků
-     * 
-     * @param QueryBuilder $qb Query builder instance
-     * @param int $page Číslo stránky
-     * @param int $itemsPerPage Počet položek na stránku
-     * @return PaginatedCollection<T> Stránkovaná kolekce entit
-     */
+ * Pomocná metoda pro stránkování výsledků
+ * 
+ * @param QueryBuilder $qb Query builder instance
+ * @param int $page Číslo stránky
+ * @param int $itemsPerPage Počet položek na stránku
+ * @return PaginatedCollection<T> Stránkovaná kolekce entit
+ */
     protected function paginate(QueryBuilder $qb, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        $paginator = new Paginator($qb);
-        $paginator->getQuery()
-            ->setFirstResult(($page - 1) * $itemsPerPage)
-            ->setMaxResults($itemsPerPage);
+    $paginator = new Paginator($qb);
+    $paginator->getQuery()
+        ->setFirstResult(($page - 1) * $itemsPerPage)
+        ->setMaxResults($itemsPerPage);
 
-        $total = count($paginator);
-        $pages = (int) ceil($total / $itemsPerPage);
-        
-        $entities = iterator_to_array($paginator->getIterator());
-        $collection = $this->createCollection($entities);
-        
-        return new PaginatedCollection(
-            $collection,
-            $total,
-            $page,
-            $itemsPerPage,
-            $pages
+    $total = count($paginator);
+    $pages = (int) ceil($total / $itemsPerPage);
+    
+    $entities = iterator_to_array($paginator->getIterator());
+    $collection = $this->createCollection($entities);
+    
+    return new PaginatedCollection(
+        $collection,
+        $total,
+        $page,
+        $itemsPerPage,
+        $pages
         );
     }
 
     /**
-     * Vytvoří typovanou kolekci z pole entit
-     * 
-     * @param array<T> $entities Pole entit
-     * @return Collection<T> Typovaná kolekce entit
-     */
+    * Vytvoří typovanou kolekci z pole entit
+    * 
+    * @param array<T> $entities Pole entit
+    * @return Collection<T> Typovaná kolekce entit
+    */
     abstract protected function createCollection(array $entities): Collection;
 }
