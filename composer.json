@@ -29,7 +29,11 @@
 		"symfony/cache": "^7.2",
 		"symfony/validator": "^7.2",
 		"symfony/doctrine-bridge": "^7.2",
-		"contributte/console": "^0.10.1"
+		"contributte/console": "^0.10.1",
+		"doctrine/cache": "^2.2",
+		"doctrine/annotations": "^1.14",
+		"psr/cache": "^3.0",
+		"psr/log": "^3.0"
 	},
 	"require-dev": {
 		"nette/tester": "^2.5",

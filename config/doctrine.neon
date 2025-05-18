@@ -1,28 +1,24 @@
+# Registrace extensions
 extensions:
-    # Add this line - it's required for Doctrine annotations to work
-    annotations: Nettrine\Annotations\DI\AnnotationsExtension
-    
-    # Registrace DBAL
-    dbal: Nettrine\DBAL\DI\DbalExtension
-    
-    # Registrace ORM
-    orm: Nettrine\ORM\DI\OrmExtension
-    
-    # Volitelně: Registrace konzolových příkazů (pokud máte nainstalován contributte/console)
-    console: Contributte\Console\DI\ConsoleExtension(%consoleMode%)
-    dbal.console: Nettrine\DBAL\DI\DbalConsoleExtension(%consoleMode%)
-    orm.console: Nettrine\ORM\DI\OrmConsoleExtension(%consoleMode%)
-    
-    # Registrace Doctrine rozšíření 
-    orm.annotations: Nettrine\ORM\DI\OrmAnnotationsExtension
-    orm.cache: Nettrine\ORM\DI\OrmCacheExtension
+    # Doctrine
+    nettrine.annotations: Nettrine\Annotations\DI\AnnotationsExtension
+    nettrine.cache: Nettrine\Cache\DI\CacheExtension
+    nettrine.dbal: Nettrine\DBAL\DI\DbalExtension
+    nettrine.dbal.console: Nettrine\DBAL\DI\DbalConsoleExtension(%consoleMode%)
+    nettrine.orm: Nettrine\ORM\DI\OrmExtension
+    nettrine.orm.console: Nettrine\ORM\DI\OrmConsoleExtension(%consoleMode%)
+    nettrine.orm.attributes: Nettrine\ORM\DI\OrmAttributesExtension
 
-# Optional configuration for annotations
-annotations:
+# Základní Doctrine
+nettrine.annotations:
     debug: %debugMode%
 
-# Konfigurace DBAL (databázová vrstva)
-dbal:
+
+
+# Doctrine DBAL
+nettrine.dbal:
+    debug:
+        panel: %debugMode%
     connection:
         driver: pdo_mysql
         host: localhost
@@ -30,22 +26,22 @@ dbal:
         user: root
         password: ''
         charset: utf8mb4
-        logging: %debugMode%
-        
-# Konfigurace ORM
-orm:
-    entityManagerDecoratorClass: App\Doctrine\EntityManagerDecorator
+        serverVersion: '8.0'
+        types:
+            uuid_binary: Ramsey\Uuid\Doctrine\UuidBinaryType
+
+# Doctrine ORM
+nettrine.orm:
     configuration:
+        proxyDir: %tempDir%/cache/doctrine/proxy
         autoGenerateProxyClasses: %debugMode%
-        proxyDir: %tempDir%/cache/doctrine/proxies
         proxyNamespace: App\Proxies
-        metadataDriverImpl: annotations
-        
-# Konfigurace anotací
-orm.annotations: 
+        metadataDriverImpl: attributes
+        entityNamespaces:
+            - App\Entity
+
+# Doctrine ORM Attributes
+nettrine.orm.attributes:
     mapping:
         App\Entity: %appDir%/Entity
 
-# Konfigurace cache
-cache:
-    driver: Doctrine\Common\Cache\ArrayCache
