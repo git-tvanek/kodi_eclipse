@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\Tag;
+use App\Entity\Tag;
 use App\Repository\TagRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;

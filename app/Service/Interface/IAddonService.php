@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\Addon;
+use App\Entity\Addon;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 

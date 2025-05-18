@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\Category;
+use App\Entity\Category;
 use App\Collection\Collection;
 
 /**

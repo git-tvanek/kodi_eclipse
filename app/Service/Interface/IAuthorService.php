@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\Author;
+use App\Entity\Author;
 use App\Collection\PaginatedCollection;
 
 /**

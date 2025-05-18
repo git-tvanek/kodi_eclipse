@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\AddonReview;
+use App\Entity\AddonReview;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 
@@ -13,7 +13,7 @@ use App\Collection\PaginatedCollection;
  * 
  * @extends IBaseService<AddonReview>
  */
-interface IReviewService extends IBaseService
+interface IAddonReviewService extends IBaseService
 {
     /**
      * Vytvoří novou recenzi od přihlášeného uživatele

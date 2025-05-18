@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\Role;
+use App\Entity\Role;
 use App\Repository\RoleRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;

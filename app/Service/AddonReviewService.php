@@ -16,7 +16,7 @@ use App\Factory\ReviewFactory;
  * @extends BaseService<AddonReview>
  * @implements IReviewService
  */
-class ReviewService extends BaseService implements IReviewService
+class AddonReviewService extends BaseService implements IAddonReviewService
 {
     /** @var AddonReviewRepository */
     private AddonReviewRepository $AddonReviewRepository;

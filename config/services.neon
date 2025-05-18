@@ -10,7 +10,7 @@ services:
     categoryRepository:
         factory: App\Repository\CategoryRepository
     reviewRepository:
-        class: App\Repository\ReviewRepository(@database.default, @addonRepository)
+        class: App\Repository\AddonReviewRepository(@database.default, @addonRepository)
     tagRepository:
         factory: App\Repository\TagRepository
 
@@ -46,7 +46,7 @@ services:
     categoryService:
         factory: App\Service\CategoryService(@categoryRepository, @categoryFactory)
     reviewService:
-        factory: App\Service\ReviewService(@reviewRepository, @reviewFactory)
+        factory: App\Service\AddonReviewService(@reviewRepository, @reviewFactory)
     searchService:
         factory: App\Service\SearchService(@addonRepository, @authorRepository, @tagRepository, @categoryRepository)
     statisticsService:
@@ -89,7 +89,7 @@ services:
         type: App\Repository\Interface\ICategoryRepository
     reviewRepositoryAlias:
         factory: @reviewRepository
-        type: App\Repository\Interface\IReviewRepository
+        type: App\Repository\Interface\IAddonReviewRepository
     tagRepositoryAlias:
         factory: @tagRepository
         type: App\Repository\Interface\ITagRepository

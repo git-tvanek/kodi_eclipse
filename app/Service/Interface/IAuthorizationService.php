@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Interface;
 
-use App\Model\User;
+use App\Entity\User;
 
 /**
  * Rozhraní pro autorizační službu

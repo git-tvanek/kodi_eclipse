@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Collection\Collection;
-use App\Model\Tag;
+use App\Entity\Tag;
 use App\Collection\PaginatedCollection;
 
 /**

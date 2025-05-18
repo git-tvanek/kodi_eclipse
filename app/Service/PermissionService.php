@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\Permission;
+use App\Entity\Permission;
 use App\Repository\PermissionRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
