@@ -1,21 +1,26 @@
-# Registrace extensions
 extensions:
-    # Doctrine
+    # Core extensions
     nettrine.annotations: Nettrine\Annotations\DI\AnnotationsExtension
     nettrine.cache: Nettrine\Cache\DI\CacheExtension
+    
+    # DBAL
     nettrine.dbal: Nettrine\DBAL\DI\DbalExtension
     nettrine.dbal.console: Nettrine\DBAL\DI\DbalConsoleExtension(%consoleMode%)
+    
+    # ORM
     nettrine.orm: Nettrine\ORM\DI\OrmExtension
     nettrine.orm.console: Nettrine\ORM\DI\OrmConsoleExtension(%consoleMode%)
     nettrine.orm.attributes: Nettrine\ORM\DI\OrmAttributesExtension
 
-# Základní Doctrine
+    # Konzole
+    console: Contributte\Console\DI\ConsoleExtension(%consoleMode%)
+
+# Konfigurace anotací
 nettrine.annotations:
     debug: %debugMode%
 
 
-
-# Doctrine DBAL
+# Konfigurace DBAL
 nettrine.dbal:
     debug:
         panel: %debugMode%
@@ -26,22 +31,17 @@ nettrine.dbal:
         user: root
         password: ''
         charset: utf8mb4
-        serverVersion: '8.0'
-        types:
-            uuid_binary: Ramsey\Uuid\Doctrine\UuidBinaryType
+        serverVersion: 5.7
 
-# Doctrine ORM
+# Konfigurace ORM
 nettrine.orm:
+    entityManagerDecoratorClass: App\Doctrine\EntityManagerDecorator
     configuration:
         proxyDir: %tempDir%/cache/doctrine/proxy
         autoGenerateProxyClasses: %debugMode%
         proxyNamespace: App\Proxies
-        metadataDriverImpl: attributes
-        entityNamespaces:
-            - App\Entity
 
-# Doctrine ORM Attributes
+# Konfigurace atributů
 nettrine.orm.attributes:
     mapping:
         App\Entity: %appDir%/Entity
-

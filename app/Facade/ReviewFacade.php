@@ -6,7 +6,7 @@ namespace App\Facade;
 
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Service\IReviewService;
+use App\Service\IAddonReviewService;
 
 /**
  * Fasáda pro práci s recenzemi
@@ -14,14 +14,14 @@ use App\Service\IReviewService;
 class ReviewFacade implements IFacade
 {
     /** @var IReviewService */
-    private IReviewService $reviewService;
+    private IAddonReviewService $reviewService;
     
     /**
      * Konstruktor
      * 
      * @param IReviewService $reviewService
      */
-    public function __construct(IReviewService $reviewService)
+    public function __construct(IAddonReviewService $reviewService)
     {
         $this->reviewService = $reviewService;
     }
