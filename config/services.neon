@@ -10,7 +10,9 @@ services:
     categoryRepository:
         factory: App\Repository\CategoryRepository
     reviewRepository:
-        class: App\Repository\AddonReviewRepository(@database.default, @addonRepository)
+        factory: App\Repository\AddonReviewRepository
+    screenshotRepository:
+        factory: App\Repository\ScreenshotRepository
     tagRepository:
         factory: App\Repository\TagRepository
 
