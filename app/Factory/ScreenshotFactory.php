@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory;
 
-use App\Model\Screenshot;
+use App\Entity\Screenshot;
 use App\Factory\Interface\IScreenshotFactory;
 
 /**

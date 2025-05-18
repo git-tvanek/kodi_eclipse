@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\RolePermission;
+use App\Entity\RolePermission;
 
 /**
  * Rozhraní pro továrnu vazeb role-oprávnění

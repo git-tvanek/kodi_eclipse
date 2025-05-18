@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\Tag;
+use App\Entity\Tag;
 
 /**
  * Rozhraní pro továrnu tagů

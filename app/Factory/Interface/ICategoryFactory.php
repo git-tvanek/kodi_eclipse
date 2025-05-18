@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\Category;
+use App\Entity\Category;
 
 /**
  * Rozhraní pro továrnu kategorií

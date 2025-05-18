@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\Screenshot;
+use App\Entity\Screenshot;
 
 /**
  * Rozhraní pro továrnu screenshotů

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\AddonTag;
+use App\Entity\AddonTag;
 
 /**
  * Rozhraní pro továrnu vazeb mezi doplňky a tagy

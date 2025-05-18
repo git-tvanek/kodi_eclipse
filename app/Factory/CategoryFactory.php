@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory;
 
-use App\Model\Category;
+use App\Entity\Category;
 use App\Factory\Interface\ICategoryFactory;
 use Nette\Utils\Strings;
 

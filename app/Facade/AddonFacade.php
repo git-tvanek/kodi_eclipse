@@ -6,7 +6,7 @@ namespace App\Facade;
 
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Model\Addon;
+use App\Entity\Addon;
 use App\Service\IAddonService;
 use App\Service\ICategoryService;
 use App\Service\ITagService;

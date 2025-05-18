@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Factory;
 
 use App\Factory\Interface\IUserRoleFactory;
-use App\Model\UserRole;
+use App\Entity\UserRole;
 
 class UserRoleFactory implements IUserRoleFactory
 {

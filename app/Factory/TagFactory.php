@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory;
 
-use App\Model\Tag;
+use App\Entity\Tag;
 use App\Factory\Interface\ITagFactory;
 use Nette\Utils\Strings;
 

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Factory;
 
 use App\Factory\Interface\IRolePermissionFactory;
-use App\Model\RolePermission;
+use App\Entity\RolePermission;
 
 class RolePermissionFactory implements IRolePermissionFactory
 {

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Factory;
 
 use App\Factory\Interface\IPermissionFactory;
-use App\Model\Permission;
+use App\Entity\Permission;
 
 class PermissionFactory implements IPermissionFactory
 {

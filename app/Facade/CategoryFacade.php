@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Facade;
 
 use App\Collection\Collection;
-use App\Model\Category;
+use App\Entity\Category;
 use App\Service\ICategoryService;
 
 /**

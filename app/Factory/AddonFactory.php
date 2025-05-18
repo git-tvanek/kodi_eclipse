@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory;
 
-use App\Model\Addon;
+use App\Entity\Addon;
 use App\Factory\Interface\IAddonFactory;
 use Nette\Utils\Strings;
 use DateTime;

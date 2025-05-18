@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\Author;
+use App\Entity\Author;
 
 /**
  * Rozhraní pro továrnu autorů

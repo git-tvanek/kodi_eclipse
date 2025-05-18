@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\Permission;
+use App\Entity\Permission;
 
 /**
  * Rozhraní pro továrnu oprávnění

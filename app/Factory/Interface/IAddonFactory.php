@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\Addon;
+use App\Entity\Addon;
 
 /**
  * Rozhraní pro továrnu doplňků

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\Role;
+use App\Entity\Role;
 
 /**
  * Rozhraní pro továrnu rolí

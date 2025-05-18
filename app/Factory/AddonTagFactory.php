@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory;
 
-use App\Model\AddonTag;
+use App\Entity\AddonTag;
 use App\Factory\Interface\IAddonTagFactory;
 
 /**

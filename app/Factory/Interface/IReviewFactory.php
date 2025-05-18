@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory\Interface;
 
-use App\Model\AddonReview;
+use App\Entity\AddonReview;
 
 /**
  * Rozhraní pro továrnu recenzí

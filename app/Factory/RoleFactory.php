@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Factory;
 
 use App\Factory\Interface\IRoleFactory;
-use App\Model\Role;
+use App\Entity\Role;
 use Nette\Utils\Strings;
 
 class RoleFactory implements IRoleFactory

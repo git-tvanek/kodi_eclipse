@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Factory;
 
 use App\Factory\Interface\IUserFactory;
-use App\Model\User;
+use App\Entity\User;
 use Nette\Utils\Random;
 
 class UserFactory implements IUserFactory

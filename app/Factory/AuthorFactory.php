@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Factory;
 
-use App\Model\Author;
+use App\Entity\Author;
 use App\Factory\Interface\IAuthorFactory;
 use DateTime;
 
