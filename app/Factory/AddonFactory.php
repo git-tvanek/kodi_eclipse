@@ -5,109 +5,127 @@ declare(strict_types=1);
 namespace App\Factory;
 
 use App\Entity\Addon;
+use App\Entity\Author;
+use App\Entity\Category;
 use App\Factory\Interface\IAddonFactory;
-use Nette\Utils\Strings;
+use App\Factory\Builder\AddonBuilder;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 use DateTime;
 
 /**
  * Továrna pro vytváření doplňků
  * 
- * @implements IFactory<Addon>
+ * @template-extends BuilderFactory<Addon, AddonBuilder>
+ * @implements IAddonFactory
  */
-class AddonFactory implements IAddonFactory
+class AddonFactory extends BuilderFactory implements IAddonFactory
 {
     /**
-     * Vytvoří novou instanci doplňku
-     * 
-     * @param array $data
-     * @return Addon
+     * @param EntityManagerInterface $entityManager
+     * @param ValidatorInterface|null $validator
+     */
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        ?ValidatorInterface $validator = null
+    ) {
+        parent::__construct($entityManager, $validator);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function getEntityClass(): string
+    {
+        return Addon::class;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function createBuilder(): AddonBuilder
+    {
+        return new AddonBuilder($this);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getRequiredFields(): array
+    {
+        return [
+            'name',
+            'version',
+            'author_id',
+            'category_id',
+            'download_url'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDefaultValues(): array
+    {
+        return [
+            'description' => null,
+            'repository_url' => null,
+            'icon_url' => null,
+            'fanart_url' => null,
+            'kodi_version_min' => null,
+            'kodi_version_max' => null,
+            'downloads_count' => 0,
+            'rating' => 0.0
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDerivedFields(): array
+    {
+        return [
+            'slug' => 'name'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function processBeforeCreate(array $data): array
+    {
+        // Převedení ID na reference entit
+        if (isset($data['author_id'])) {
+            $data['author'] = $this->entityManager->getReference(Author::class, $data['author_id']);
+            unset($data['author_id']);
+        }
+        
+        if (isset($data['category_id'])) {
+            $data['category'] = $this->entityManager->getReference(Category::class, $data['category_id']);
+            unset($data['category_id']);
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * {@inheritdoc}
      */
     public function create(array $data): Addon
     {
-        // Zajištění povinných polí
-        if (!isset($data['name'])) {
-            throw new \InvalidArgumentException('Addon name is required');
-        }
-
-        if (!isset($data['version'])) {
-            throw new \InvalidArgumentException('Addon version is required');
-        }
-
-        if (!isset($data['author_id'])) {
-            throw new \InvalidArgumentException('Author ID is required');
-        }
-
-        if (!isset($data['category_id'])) {
-            throw new \InvalidArgumentException('Category ID is required');
-        }
-
-        if (!isset($data['download_url'])) {
-            throw new \InvalidArgumentException('Download URL is required');
-        }
-
-        // Výchozí hodnoty pro nepovinná pole
-        if (!isset($data['slug']) && isset($data['name'])) {
-            $data['slug'] = Strings::webalize($data['name']);
-        }
-
-        $data['description'] = $data['description'] ?? null;
-        $data['repository_url'] = $data['repository_url'] ?? null;
-        $data['icon_url'] = $data['icon_url'] ?? null;
-        $data['fanart_url'] = $data['fanart_url'] ?? null;
-        $data['kodi_version_min'] = $data['kodi_version_min'] ?? null;
-        $data['kodi_version_max'] = $data['kodi_version_max'] ?? null;
-        $data['downloads_count'] = $data['downloads_count'] ?? 0;
-        $data['rating'] = $data['rating'] ?? 0.0;
-        
-        // Časové údaje
-        $data['created_at'] = $data['created_at'] ?? new DateTime();
-        $data['updated_at'] = $data['updated_at'] ?? new DateTime();
-        
-        return Addon::fromArray($data);
+        return parent::create($data);
     }
-
+    
     /**
-     * Vytvoří kopii existujícího doplňku s možností přepsání některých hodnot
-     * 
-     * @param Addon $addon Existující doplněk
-     * @param array $overrideData Data k přepsání
-     * @param bool $createNew Vytvořit novou instanci (bez ID)
-     * @return Addon
+     * {@inheritdoc}
      */
-    public function createFromExisting(Addon $addon, array $overrideData = [], bool $createNew = true): Addon
+    public function createFromExisting(object $entity, array $overrideData = [], bool $createNew = true): Addon
     {
-        $data = $addon->toArray();
-        
-        // Přepsat data novými hodnotami
-        foreach ($overrideData as $key => $value) {
-            $data[$key] = $value;
-        }
-        
-        // Pokud byl změněn název a není explicitně uveden slug, vygenerovat nový
-        if (isset($overrideData['name']) && !isset($overrideData['slug'])) {
-            $data['slug'] = Strings::webalize($overrideData['name']);
-        }
-        
-        // Aktualizovat datum
-        $data['updated_at'] = new DateTime();
-        
-        // Při vytváření nové instance odstranit ID
-        if ($createNew) {
-            unset($data['id']);
-        }
-        
-        return Addon::fromArray($data);
+        return parent::createFromExisting($entity, $overrideData, $createNew);
     }
-
+    
     /**
-     * Vytvoří základní doplněk s minimálními povinnými daty
-     * 
-     * @param string $name Název doplňku
-     * @param string $version Verze doplňku
-     * @param int $authorId ID autora
-     * @param int $categoryId ID kategorie
-     * @param string $downloadUrl URL pro stažení doplňku
-     * @return Addon
+     * {@inheritdoc}
      */
     public function createBase(
         string $name,
@@ -115,7 +133,8 @@ class AddonFactory implements IAddonFactory
         int $authorId,
         int $categoryId,
         string $downloadUrl
-    ): Addon {
+    ): Addon
+    {
         return $this->create([
             'name' => $name,
             'version' => $version,

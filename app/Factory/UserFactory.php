@@ -4,40 +4,109 @@ declare(strict_types=1);
 
 namespace App\Factory;
 
-use App\Factory\Interface\IUserFactory;
 use App\Entity\User;
+use App\Factory\Interface\IUserFactory;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Nette\Security\Passwords;
 use Nette\Utils\Random;
+use DateTime;
 
-class UserFactory implements IUserFactory
+/**
+ * Továrna pro vytváření uživatelů
+ * 
+ * @template-extends SchemaFactory<User>
+ * @implements IUserFactory
+ */
+class UserFactory extends SchemaFactory implements IUserFactory
 {
+    private Passwords $passwords;
+    
     /**
-     * {@inheritdoc}
+     * @param EntityManagerInterface $entityManager
+     * @param ValidatorInterface|null $validator
      */
-    public function create(array $data): User
-    {
-        return User::fromArray($data);
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        ?ValidatorInterface $validator = null
+    ) {
+        parent::__construct($entityManager, $validator);
+        $this->passwords = new Passwords();
     }
     
     /**
      * {@inheritdoc}
      */
-    public function createFromRegistration(string $username, string $email, string $password, bool $requireVerification = true): User
+    public function getEntityClass(): string
     {
-        $user = new User();
-        $user->username = $username;
-        $user->email = $email;
-        $user->password_hash = User::hashPassword($password);
-        $user->is_active = true;
-        $user->is_verified = !$requireVerification;
-        
-        if ($requireVerification) {
-            $user->verification_token = Random::generate(32);
+        return User::class;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getRequiredFields(): array
+    {
+        return [
+            'username',
+            'email'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDefaultValues(): array
+    {
+        return [
+            'is_active' => true,
+            'is_verified' => false,
+            'verification_token' => null,
+            'password_reset_token' => null,
+            'password_reset_expires' => null,
+            'profile_image' => null,
+            'last_login' => null
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function validateSchema(array $data): array
+    {
+        // Validace unikátnosti uživatelského jména
+        if (isset($data['username'])) {
+            $existingUser = $this->entityManager->getRepository(User::class)->findOneBy(['username' => $data['username']]);
+            
+            if ($existingUser && (!isset($data['id']) || $existingUser->getId() !== $data['id'])) {
+                throw new \InvalidArgumentException("User with username '{$data['username']}' already exists");
+            }
         }
         
-        $user->created_at = new \DateTime();
-        $user->updated_at = new \DateTime();
+        // Validace unikátnosti emailu
+        if (isset($data['email'])) {
+            $existingUser = $this->entityManager->getRepository(User::class)->findOneBy(['email' => $data['email']]);
+            
+            if ($existingUser && (!isset($data['id']) || $existingUser->getId() !== $data['id'])) {
+                throw new \InvalidArgumentException("User with email '{$data['email']}' already exists");
+            }
+        }
         
-        return $user;
+        return $data;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function create(array $data): User
+    {
+        // Pokud je uvedeno heslo, převést na hash
+        if (isset($data['password']) && !isset($data['password_hash'])) {
+            $data['password_hash'] = $this->passwords->hash($data['password']);
+            unset($data['password']);
+        }
+        
+        return parent::create($data);
     }
     
     /**
@@ -45,36 +114,41 @@ class UserFactory implements IUserFactory
      */
     public function createFromExisting(User $user, array $data, bool $updateTimestamp = true): User
     {
-        $updatedUser = clone $user;
+        $overrideData = $data;
         
-        if (isset($data['username'])) {
-            $updatedUser->username = $data['username'];
+        // Pokud je uvedeno heslo, převést na hash
+        if (isset($overrideData['password'])) {
+            $overrideData['password_hash'] = $this->passwords->hash($overrideData['password']);
+            unset($overrideData['password']);
         }
         
-        if (isset($data['email'])) {
-            $updatedUser->email = $data['email'];
-        }
+        $result = parent::createFromExisting($user, $overrideData, false);
         
-        if (isset($data['password'])) {
-            $updatedUser->password_hash = User::hashPassword($data['password']);
-        }
-        
-        if (isset($data['is_active'])) {
-            $updatedUser->is_active = (bool) $data['is_active'];
-        }
-        
-        if (isset($data['is_verified'])) {
-            $updatedUser->is_verified = (bool) $data['is_verified'];
-        }
-        
-        if (isset($data['profile_image'])) {
-            $updatedUser->profile_image = $data['profile_image'];
-        }
-        
+        // Volitelná aktualizace timestamp
         if ($updateTimestamp) {
-            $updatedUser->updated_at = new \DateTime();
+            $this->updateTimestamps($result, false);
         }
         
-        return $updatedUser;
+        return $result;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function createFromRegistration(string $username, string $email, string $password, bool $requireVerification = true): User
+    {
+        $data = [
+            'username' => $username,
+            'email' => $email,
+            'password' => $password,
+            'is_active' => true,
+            'is_verified' => !$requireVerification
+        ];
+        
+        if ($requireVerification) {
+            $data['verification_token'] = Random::generate(32);
+        }
+        
+        return $this->create($data);
     }
 }

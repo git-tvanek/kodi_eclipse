@@ -6,41 +6,84 @@ namespace App\Factory;
 
 use App\Entity\Tag;
 use App\Factory\Interface\ITagFactory;
+use App\Factory\Builder\TagBuilder;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Nette\Utils\Strings;
 
 /**
  * Továrna pro vytváření tagů
  * 
- * @implements IFactory<Tag>
+ * @template-extends BuilderFactory<Tag, TagBuilder>
+ * @implements ITagFactory
  */
-class TagFactory implements ITagFactory
+class TagFactory extends BuilderFactory implements ITagFactory
 {
     /**
-     * Vytvoří novou instanci tagu
-     * 
-     * @param array $data
-     * @return Tag
+     * @param EntityManagerInterface $entityManager
+     * @param ValidatorInterface|null $validator
+     */
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        ?ValidatorInterface $validator = null
+    ) {
+        parent::__construct($entityManager, $validator);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function getEntityClass(): string
+    {
+        return Tag::class;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function createBuilder(): TagBuilder
+    {
+        return new TagBuilder($this);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getRequiredFields(): array
+    {
+        return [
+            'name'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDerivedFields(): array
+    {
+        return [
+            'slug' => 'name'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
      */
     public function create(array $data): Tag
     {
-        // Zajištění povinných polí
-        if (!isset($data['name'])) {
-            throw new \InvalidArgumentException('Tag name is required');
-        }
-
-        // Automatické vytvoření slugu
-        if (!isset($data['slug']) && isset($data['name'])) {
-            $data['slug'] = Strings::webalize($data['name']);
-        }
-        
-        return Tag::fromArray($data);
+        return parent::create($data);
     }
-
+    
     /**
-     * Vytvoří tag pouze s názvem (slug se vygeneruje automaticky)
-     * 
-     * @param string $name Název tagu
-     * @return Tag
+     * {@inheritdoc}
+     */
+    public function createFromExisting(object $entity, array $overrideData = [], bool $createNew = true): Tag
+    {
+        return parent::createFromExisting($entity, $overrideData, $createNew);
+    }
+    
+    /**
+     * {@inheritdoc}
      */
     public function createWithName(string $name): Tag
     {
@@ -48,12 +91,9 @@ class TagFactory implements ITagFactory
             'name' => $name
         ]);
     }
-
+    
     /**
-     * Vytvoří tagy z pole názvů
-     * 
-     * @param array $names Pole názvů tagů
-     * @return array
+     * {@inheritdoc}
      */
     public function createBatch(array $names): array
     {

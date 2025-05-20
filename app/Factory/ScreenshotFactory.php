@@ -5,47 +5,92 @@ declare(strict_types=1);
 namespace App\Factory;
 
 use App\Entity\Screenshot;
+use App\Entity\Addon;
 use App\Factory\Interface\IScreenshotFactory;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
  * Továrna pro vytváření screenshotů
  * 
- * @implements IFactory<Screenshot>
+ * @template-extends BaseFactory<Screenshot>
+ * @implements IScreenshotFactory
  */
-class ScreenshotFactory implements IScreenshotFactory
+class ScreenshotFactory extends BaseFactory implements IScreenshotFactory
 {
     /**
-     * Vytvoří novou instanci screenshotu
-     * 
-     * @param array $data
-     * @return Screenshot
+     * @param EntityManagerInterface $entityManager
+     * @param ValidatorInterface|null $validator
+     */
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        ?ValidatorInterface $validator = null
+    ) {
+        parent::__construct($entityManager, $validator);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function getEntityClass(): string
+    {
+        return Screenshot::class;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getRequiredFields(): array
+    {
+        return [
+            'addon_id',
+            'url'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDefaultValues(): array
+    {
+        return [
+            'description' => null,
+            'sort_order' => 0
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function processBeforeCreate(array $data): array
+    {
+        // Převedení ID na referenci entity
+        if (isset($data['addon_id'])) {
+            $data['addon'] = $this->entityManager->getReference(Addon::class, $data['addon_id']);
+            unset($data['addon_id']);
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * {@inheritdoc}
      */
     public function create(array $data): Screenshot
     {
-        // Zajištění povinných polí
-        if (!isset($data['addon_id'])) {
-            throw new \InvalidArgumentException('Addon ID is required');
-        }
-
-        if (!isset($data['url'])) {
-            throw new \InvalidArgumentException('URL is required');
-        }
-
-        // Výchozí hodnoty pro nepovinná pole
-        $data['description'] = $data['description'] ?? null;
-        $data['sort_order'] = $data['sort_order'] ?? 0;
-        
-        return Screenshot::fromArray($data);
+        return parent::create($data);
     }
-
+    
     /**
-     * Vytvoří screenshot s popisem
-     * 
-     * @param int $addonId ID doplňku
-     * @param string $url URL obrázku
-     * @param string|null $description Popis obrázku
-     * @param int $sortOrder Pořadí řazení
-     * @return Screenshot
+     * {@inheritdoc}
+     */
+    public function createFromExisting(object $entity, array $overrideData = [], bool $createNew = true): Screenshot
+    {
+        return parent::createFromExisting($entity, $overrideData, $createNew);
+    }
+    
+    /**
+     * {@inheritdoc}
      */
     public function createWithDescription(int $addonId, string $url, ?string $description = null, int $sortOrder = 0): Screenshot
     {
@@ -56,13 +101,9 @@ class ScreenshotFactory implements IScreenshotFactory
             'sort_order' => $sortOrder
         ]);
     }
-
+    
     /**
-     * Vytvoří kolekci screenshotů z pole URL
-     * 
-     * @param int $addonId ID doplňku
-     * @param array $urls Pole URL obrázků
-     * @return array
+     * {@inheritdoc}
      */
     public function createBatch(int $addonId, array $urls): array
     {
