@@ -6,68 +6,86 @@ namespace App\Factory;
 
 use App\Entity\Author;
 use App\Factory\Interface\IAuthorFactory;
+use App\Factory\Builder\AuthorBuilder;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 use DateTime;
 
 /**
  * Továrna pro vytváření autorů
  * 
- * @implements IFactory<Author>
+ * @template-extends BuilderFactory<Author, AuthorBuilder>
+ * @implements IAuthorFactory
  */
-class AuthorFactory implements IAuthorFactory
+class AuthorFactory extends BuilderFactory implements IAuthorFactory
 {
     /**
-     * Vytvoří novou instanci autora
-     * 
-     * @param array $data
-     * @return Author
+     * @param EntityManagerInterface $entityManager
+     * @param ValidatorInterface|null $validator
+     */
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        ?ValidatorInterface $validator = null
+    ) {
+        parent::__construct($entityManager, $validator);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function getEntityClass(): string
+    {
+        return Author::class;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function createBuilder(): AuthorBuilder
+    {
+        return new AuthorBuilder($this);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getRequiredFields(): array
+    {
+        return [
+            'name'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDefaultValues(): array
+    {
+        return [
+            'email' => null,
+            'website' => null,
+            'is_deleted' => false
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
      */
     public function create(array $data): Author
     {
-        // Zajištění povinných polí
-        if (!isset($data['name'])) {
-            throw new \InvalidArgumentException('Author name is required');
-        }
-
-        // Výchozí hodnoty pro nepovinná pole
-        $data['email'] = $data['email'] ?? null;
-        $data['website'] = $data['website'] ?? null;
-        $data['created_at'] = $data['created_at'] ?? new DateTime();
-        
-        return Author::fromArray($data);
+        return parent::create($data);
     }
-
+    
     /**
-     * Vytvoří kopii existujícího autora
-     * 
-     * @param Author $author Existující autor
-     * @param array $overrideData Data k přepsání
-     * @param bool $createNew Vytvořit novou instanci (bez ID)
-     * @return Author
+     * {@inheritdoc}
      */
-    public function createFromExisting(Author $author, array $overrideData = [], bool $createNew = true): Author
+    public function createFromExisting(object $entity, array $overrideData = [], bool $createNew = true): Author
     {
-        $data = $author->toArray();
-        
-        // Přepsat data novými hodnotami
-        foreach ($overrideData as $key => $value) {
-            $data[$key] = $value;
-        }
-        
-        // Při vytváření nové instance odstranit ID
-        if ($createNew) {
-            unset($data['id']);
-            // Při vytváření kopie nastavit nové datum vytvoření
-            $data['created_at'] = new DateTime();
-        }
-        
-        return Author::fromArray($data);
+        return parent::createFromExisting($entity, $overrideData, $createNew);
     }
-
+    
     /**
-     * Vytvoří základního autora pouze s jménem
-     * 
-     * @param string $name Jméno autora
-     * @return Author
+     * {@inheritdoc}
      */
     public function createWithName(string $name): Author
     {
@@ -75,14 +93,9 @@ class AuthorFactory implements IAuthorFactory
             'name' => $name
         ]);
     }
-
+    
     /**
-     * Vytvoří autora s kontaktními údaji
-     * 
-     * @param string $name Jméno autora
-     * @param string|null $email E-mail autora
-     * @param string|null $website Webová stránka autora
-     * @return Author
+     * {@inheritdoc}
      */
     public function createWithContact(string $name, ?string $email = null, ?string $website = null): Author
     {

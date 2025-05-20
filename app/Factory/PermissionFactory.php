@@ -4,17 +4,66 @@ declare(strict_types=1);
 
 namespace App\Factory;
 
-use App\Factory\Interface\IPermissionFactory;
 use App\Entity\Permission;
+use App\Factory\Interface\IPermissionFactory;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
-class PermissionFactory implements IPermissionFactory
+/**
+ * Továrna pro vytváření oprávnění
+ * 
+ * @template-extends BaseFactory<Permission>
+ * @implements IPermissionFactory
+ */
+class PermissionFactory extends BaseFactory implements IPermissionFactory
 {
+    /**
+     * @param EntityManagerInterface $entityManager
+     * @param ValidatorInterface|null $validator
+     */
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        ?ValidatorInterface $validator = null
+    ) {
+        parent::__construct($entityManager, $validator);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function getEntityClass(): string
+    {
+        return Permission::class;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getRequiredFields(): array
+    {
+        return [
+            'name',
+            'resource',
+            'action'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDefaultValues(): array
+    {
+        return [
+            'description' => null
+        ];
+    }
+    
     /**
      * {@inheritdoc}
      */
     public function create(array $data): Permission
     {
-        return Permission::fromArray($data);
+        return parent::create($data);
     }
     
     /**
@@ -22,13 +71,12 @@ class PermissionFactory implements IPermissionFactory
      */
     public function createPermission(string $name, string $resource, string $action, ?string $description = null): Permission
     {
-        $permission = new Permission();
-        $permission->name = $name;
-        $permission->resource = $resource;
-        $permission->action = $action;
-        $permission->description = $description;
-        
-        return $permission;
+        return $this->create([
+            'name' => $name,
+            'resource' => $resource,
+            'action' => $action,
+            'description' => $description
+        ]);
     }
     
     /**
@@ -36,24 +84,6 @@ class PermissionFactory implements IPermissionFactory
      */
     public function createFromExisting(Permission $permission, array $data): Permission
     {
-        $updatedPermission = clone $permission;
-        
-        if (isset($data['name'])) {
-            $updatedPermission->name = $data['name'];
-        }
-        
-        if (isset($data['resource'])) {
-            $updatedPermission->resource = $data['resource'];
-        }
-        
-        if (isset($data['action'])) {
-            $updatedPermission->action = $data['action'];
-        }
-        
-        if (isset($data['description'])) {
-            $updatedPermission->description = $data['description'];
-        }
-        
-        return $updatedPermission;
+        return parent::createFromExisting($permission, $data);
     }
 }

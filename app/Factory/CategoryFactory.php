@@ -6,92 +6,120 @@ namespace App\Factory;
 
 use App\Entity\Category;
 use App\Factory\Interface\ICategoryFactory;
+use App\Factory\Builder\CategoryBuilder;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Nette\Utils\Strings;
 
 /**
  * Továrna pro vytváření kategorií
  * 
- * @implements IFactory<Category>
+ * @template-extends BuilderFactory<Category, CategoryBuilder>
+ * @implements ICategoryFactory
  */
-class CategoryFactory implements ICategoryFactory
+class CategoryFactory extends BuilderFactory implements ICategoryFactory
 {
     /**
-     * Vytvoří novou instanci kategorie
-     * 
-     * @param array $data
-     * @return Category
+     * @param EntityManagerInterface $entityManager
+     * @param ValidatorInterface|null $validator
+     */
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        ?ValidatorInterface $validator = null
+    ) {
+        parent::__construct($entityManager, $validator);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function getEntityClass(): string
+    {
+        return Category::class;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    public function createBuilder(): CategoryBuilder
+    {
+        return new CategoryBuilder($this);
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getRequiredFields(): array
+    {
+        return [
+            'name'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDefaultValues(): array
+    {
+        return [
+            'parent' => null,
+            'is_deleted' => false
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function getDerivedFields(): array
+    {
+        return [
+            'slug' => 'name'
+        ];
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
+    protected function processBeforeCreate(array $data): array
+    {
+        // Převedení ID nadřazené kategorie na referenci
+        if (isset($data['parent_id'])) {
+            $data['parent'] = $this->entityManager->getReference(Category::class, $data['parent_id']);
+            unset($data['parent_id']);
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * {@inheritdoc}
      */
     public function create(array $data): Category
     {
-        // Zajištění povinných polí
-        if (!isset($data['name'])) {
-            throw new \InvalidArgumentException('Category name is required');
-        }
-
-        // Automatické vytvoření slugu
-        if (!isset($data['slug']) && isset($data['name'])) {
-            $data['slug'] = Strings::webalize($data['name']);
-        }
-
-        // Výchozí hodnoty pro nepovinná pole
-        $data['parent_id'] = $data['parent_id'] ?? null;
-        
-        return Category::fromArray($data);
+        return parent::create($data);
     }
-
+    
     /**
-     * Vytvoří kopii existující kategorie
-     * 
-     * @param Category $category Existující kategorie
-     * @param array $overrideData Data k přepsání
-     * @param bool $createNew Vytvořit novou instanci (bez ID)
-     * @return Category
+     * {@inheritdoc}
      */
-    public function createFromExisting(Category $category, array $overrideData = [], bool $createNew = true): Category
+    public function createFromExisting(object $entity, array $overrideData = [], bool $createNew = true): Category
     {
-        $data = $category->toArray();
-        
-        // Přepsat data novými hodnotami
-        foreach ($overrideData as $key => $value) {
-            $data[$key] = $value;
-        }
-        
-        // Pokud byl změněn název a není explicitně uveden slug, vygenerovat nový
-        if (isset($overrideData['name']) && !isset($overrideData['slug'])) {
-            $data['slug'] = Strings::webalize($overrideData['name']);
-        }
-        
-        // Při vytváření nové instance odstranit ID
-        if ($createNew) {
-            unset($data['id']);
-        }
-        
-        return Category::fromArray($data);
+        return parent::createFromExisting($entity, $overrideData, $createNew);
     }
-
+    
     /**
-     * Vytvoří kořenovou kategorii
-     * 
-     * @param string $name Název kategorie
-     * @param string|null $slug Slug kategorie (volitelný)
-     * @return Category
+     * {@inheritdoc}
      */
     public function createRoot(string $name, ?string $slug = null): Category
     {
         return $this->create([
             'name' => $name,
-            'slug' => $slug,
-            'parent_id' => null
+            'slug' => $slug
         ]);
     }
-
+    
     /**
-     * Vytvoří podkategorii
-     * 
-     * @param string $name Název kategorie
-     * @param int $parentId ID nadřazené kategorie
-     * @param string|null $slug Slug kategorie (volitelný)
-     * @return Category
+     * {@inheritdoc}
      */
     public function createSubcategory(string $name, int $parentId, ?string $slug = null): Category
     {
