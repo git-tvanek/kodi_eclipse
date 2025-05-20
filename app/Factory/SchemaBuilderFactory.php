@@ -6,21 +6,22 @@ namespace App\Factory;
 
 use App\Factory\Interface\IBuilderFactory;
 use App\Factory\Interface\IEntityBuilder;
+use App\Factory\Interface\ISchemaFactory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
- * Továrna s podporou builderů
+ * Továrna s podporou schémat i builderů
  * 
  * @template T of object
  * @template B of IEntityBuilder
- * @extends ExtensionFactory<T>
+ * @extends SchemaFactory<T>
  * @implements IBuilderFactory<T, B>
  */
-abstract class BuilderFactory extends ExtensionFactory implements IBuilderFactory
+abstract class SchemaBuilderFactory extends SchemaFactory implements IBuilderFactory
 {
     /**
-     * Konstrukce továrny s buildery
+     * Konstrukce továrny s schématy a buildery
      * 
      * @param EntityManagerInterface $entityManager
      * @param ValidatorInterface|null $validator

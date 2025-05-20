@@ -9,15 +9,17 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 /**
- * Továrna používající validační schéma
+ * Továrna s podporou validačních schémat
  * 
  * @template T of object
- * @extends BaseFactory<T>
+ * @extends ExtensionFactory<T>
  * @implements ISchemaFactory<T>
  */
-abstract class SchemaFactory extends BaseFactory implements ISchemaFactory
+abstract class SchemaFactory extends ExtensionFactory implements ISchemaFactory
 {
     /**
+     * Konstrukce továrny se schématem
+     * 
      * @param EntityManagerInterface $entityManager
      * @param ValidatorInterface|null $validator
      */
@@ -31,13 +33,17 @@ abstract class SchemaFactory extends BaseFactory implements ISchemaFactory
     /**
      * {@inheritdoc}
      */
-    public function create(array $data): object
+    protected function initializeExtensions(): void
     {
-        // Validace dat podle schématu
-        $validatedData = $this->validateSchema($data);
+        parent::initializeExtensions();
         
-        // Pokračovat standardním procesem
-        return parent::create($validatedData);
+        // Přidání validace schématu jako rozšíření
+        $this->addExtension('schema_validation', self::PHASE_BEFORE_CREATE, function($data, $factory) {
+            if (is_array($data)) {
+                return $this->validateSchema($data);
+            }
+            return $data;
+        });
     }
     
     /**
@@ -45,8 +51,8 @@ abstract class SchemaFactory extends BaseFactory implements ISchemaFactory
      */
     public function validateSchema(array $data): array
     {
-        // Tato metoda musí být implementována v konkrétních továrnách
-        // V základní implementaci pouze vrátí data beze změny
+        // Základní implementace pouze vrací data beze změny
+        // Konkrétní implementace by měla být v odvozených třídách
         return $data;
     }
 }
