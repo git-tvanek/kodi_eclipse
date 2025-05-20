@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Factory;
 
 use App\Entity\Role;
+use App\Entity\Permission;
 use App\Factory\Interface\IRoleFactory;
+use App\Factory\Builder\RoleBuilder;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Nette\Utils\Strings;
@@ -35,6 +37,16 @@ class RoleFactory extends SchemaFactory implements IRoleFactory
     public function getEntityClass(): string
     {
         return Role::class;
+    }
+    
+    /**
+     * Vytvoří builder pro fluent rozhraní
+     * 
+     * @return RoleBuilder
+     */
+    public function createBuilder(): RoleBuilder
+    {
+        return new RoleBuilder($this);
     }
     
     /**
@@ -71,6 +83,31 @@ class RoleFactory extends SchemaFactory implements IRoleFactory
     /**
      * {@inheritdoc}
      */
+    protected function processBeforeCreate(array $data): array
+    {
+        // Validace kódu role
+        if (isset($data['code']) && !preg_match('/^[a-zA-Z0-9_]+$/', $data['code'])) {
+            throw new \InvalidArgumentException('Kód role může obsahovat pouze písmena, čísla a podtržítka.');
+        }
+        
+        // Převedení ID oprávnění na reference entit, pokud existují
+        if (isset($data['permission_ids']) && is_array($data['permission_ids'])) {
+            $data['permissions'] = [];
+            foreach ($data['permission_ids'] as $permissionId) {
+                $data['permissions'][] = $this->entityManager->getReference(
+                    Permission::class, 
+                    $permissionId
+                );
+            }
+            unset($data['permission_ids']);
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * {@inheritdoc}
+     */
     public function validateSchema(array $data): array
     {
         // Validace unikátnosti kódu
@@ -94,14 +131,31 @@ class RoleFactory extends SchemaFactory implements IRoleFactory
     }
     
     /**
+     * Vytvoří entitu z dat builderu
+     * 
+     * @param array $data
+     * @return Role
+     */
+    public function createFromBuilder(array $data): Role
+    {
+        return $this->create($data);
+    }
+    
+    /**
      * {@inheritdoc}
      */
-    public function createFromExisting(Role $role, array $data): Role
+    public function createFromExisting(object $entity, array $overrideData = [], bool $createNew = true): Role
     {
-        $overrideData = $data;
-        $overrideData['id'] = $role->getId();
+        // Kontrola, zda je entita správného typu
+        if (!($entity instanceof Role)) {
+            throw new \InvalidArgumentException(sprintf(
+                'Entity must be instance of %s, %s given',
+                Role::class,
+                get_class($entity)
+            ));
+        }
         
-        return parent::createFromExisting($role, $overrideData, false);
+        return parent::createFromExisting($entity, $overrideData, $createNew);
     }
     
     /**
@@ -115,5 +169,31 @@ class RoleFactory extends SchemaFactory implements IRoleFactory
             'description' => $description,
             'priority' => $priority
         ]);
+    }
+    
+    /**
+     * Přidá oprávnění k existující roli
+     * 
+     * @param Role $role
+     * @param Permission $permission
+     * @return Role
+     */
+    public function addPermissionToRole(Role $role, Permission $permission): Role
+    {
+        $role->addPermission($permission);
+        return $role;
+    }
+    
+    /**
+     * Odebere oprávnění z existující role
+     * 
+     * @param Role $role
+     * @param Permission $permission
+     * @return Role
+     */
+    public function removePermissionFromRole(Role $role, Permission $permission): Role
+    {
+        $role->removePermission($permission);
+        return $role;
     }
 }

@@ -18,7 +18,7 @@ use DateTime;
  * @template-extends SchemaFactory<User>
  * @implements IUserFactory
  */
-class UserFactory extends SchemaFactory implements IUserFactory
+class UserFactory extends BuilderFactory implements IUserFactory
 {
     private Passwords $passwords;
     
@@ -151,4 +151,6 @@ class UserFactory extends SchemaFactory implements IUserFactory
         
         return $this->create($data);
     }
+
+    
 }

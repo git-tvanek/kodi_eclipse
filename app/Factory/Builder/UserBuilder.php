@@ -157,6 +157,56 @@ class UserBuilder extends EntityBuilder
     }
     
     /**
+     * Přidá ID role, kterou uživatel má mít
+     * 
+     * @param int $roleId
+     * @return self
+     */
+    public function addRoleId(int $roleId): self
+    {
+        if (!isset($this->data['role_ids'])) {
+            $this->data['role_ids'] = [];
+        }
+        
+        if (!in_array($roleId, $this->data['role_ids'])) {
+            $this->data['role_ids'][] = $roleId;
+        }
+        
+        return $this;
+    }
+    
+    /**
+     * Odebere ID role, kterou uživatel nemá mít
+     * 
+     * @param int $roleId
+     * @return self
+     */
+    public function removeRoleId(int $roleId): self
+    {
+        if (isset($this->data['role_ids'])) {
+            $this->data['role_ids'] = array_filter(
+                $this->data['role_ids'], 
+                function ($id) use ($roleId) {
+                    return $id !== $roleId;
+                }
+            );
+        }
+        
+        return $this;
+    }
+    
+    /**
+     * Nastaví ID rolí, které uživatel má mít
+     * 
+     * @param array<int> $roleIds
+     * @return self
+     */
+    public function setRoleIds(array $roleIds): self
+    {
+        return $this->setValue('role_ids', $roleIds);
+    }
+    
+    /**
      * Vytvoří účet z registračních údajů
      * 
      * @param string $username
@@ -173,6 +223,9 @@ class UserBuilder extends EntityBuilder
         $this->setValue('is_active', true);
         $this->setValue('is_verified', !$requireVerification);
         
+        // Výchozí role pro nové uživatele
+        $this->setValue('role_ids', []);
+        
         if ($requireVerification) {
             $this->setValue('verification_token', Random::generate(32));
         }
@@ -186,15 +239,19 @@ class UserBuilder extends EntityBuilder
      * @param string $username
      * @param string $email
      * @param string $password
+     * @param int $adminRoleId ID role administrátora
      * @return self
      */
-    public function asAdmin(string $username, string $email, string $password): self
+    public function asAdmin(string $username, string $email, string $password, int $adminRoleId): self
     {
         $this->setValue('username', $username);
         $this->setValue('email', $email);
         $this->setValue('password', $password);
         $this->setValue('is_active', true);
         $this->setValue('is_verified', true);
+        
+        // Přidání administrátorské role
+        $this->setValue('role_ids', [$adminRoleId]);
         
         return $this;
     }

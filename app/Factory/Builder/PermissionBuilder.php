@@ -40,9 +40,13 @@ class PermissionBuilder extends EntityBuilder
      * 
      * @param string $resource
      * @return self
+     * @throws \InvalidArgumentException Pokud zdroj neodpovídá požadovanému formátu
      */
     public function setResource(string $resource): self
     {
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $resource)) {
+            throw new \InvalidArgumentException('Zdroj může obsahovat pouze písmena, čísla a podtržítka.');
+        }
         return $this->setValue('resource', $resource);
     }
     
@@ -51,9 +55,13 @@ class PermissionBuilder extends EntityBuilder
      * 
      * @param string $action
      * @return self
+     * @throws \InvalidArgumentException Pokud akce neodpovídá požadovanému formátu
      */
     public function setAction(string $action): self
     {
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $action)) {
+            throw new \InvalidArgumentException('Akce může obsahovat pouze písmena, čísla a podtržítka.');
+        }
         return $this->setValue('action', $action);
     }
     
@@ -66,51 +74,6 @@ class PermissionBuilder extends EntityBuilder
     public function setDescription(?string $description): self
     {
         return $this->setValue('description', $description);
-    }
-    
-    /**
-     * Vytvoří CRUD oprávnění pro zdroj
-     * 
-     * @param string $resource Název zdroje
-     * @return array<Permission> Pole vytvořených oprávnění
-     */
-    public function createCrudPermissions(string $resource): array
-    {
-        $permissions = [];
-        
-        // Create
-        $createBuilder = clone $this;
-        $createBuilder->setValue('name', "Vytvoření {$resource}");
-        $createBuilder->setValue('resource', $resource);
-        $createBuilder->setValue('action', 'create');
-        $createBuilder->setValue('description', "Oprávnění pro vytvoření {$resource}");
-        $permissions[] = $createBuilder->build();
-        
-        // Read
-        $readBuilder = clone $this;
-        $readBuilder->setValue('name', "Čtení {$resource}");
-        $readBuilder->setValue('resource', $resource);
-        $readBuilder->setValue('action', 'read');
-        $readBuilder->setValue('description', "Oprávnění pro čtení {$resource}");
-        $permissions[] = $readBuilder->build();
-        
-        // Update
-        $updateBuilder = clone $this;
-        $updateBuilder->setValue('name', "Úprava {$resource}");
-        $updateBuilder->setValue('resource', $resource);
-        $updateBuilder->setValue('action', 'update');
-        $updateBuilder->setValue('description', "Oprávnění pro úpravu {$resource}");
-        $permissions[] = $updateBuilder->build();
-        
-        // Delete
-        $deleteBuilder = clone $this;
-        $deleteBuilder->setValue('name', "Odstranění {$resource}");
-        $deleteBuilder->setValue('resource', $resource);
-        $deleteBuilder->setValue('action', 'delete');
-        $deleteBuilder->setValue('description', "Oprávnění pro odstranění {$resource}");
-        $permissions[] = $deleteBuilder->build();
-        
-        return $permissions;
     }
     
     /**
