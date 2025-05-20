@@ -19,8 +19,6 @@ services:
     # Factories as classes
     addonFactory:
         class: App\Factory\AddonFactory
-    addonTagFactory:
-        class: App\Factory\AddonTagFactory
     authorFactory:
         class: App\Factory\AuthorFactory
     categoryFactory:
@@ -100,9 +98,6 @@ services:
     addonFactoryAlias:
         factory: @addonFactory
         type: App\Factory\Interface\IAddonFactory
-    addonTagFactoryAlias:
-        factory: @addonTagFactory
-        type: App\Factory\Interface\IAddonTagFactory
     authorFactoryAlias:
         factory: @authorFactory
         type: App\Factory\Interface\IAuthorFactory

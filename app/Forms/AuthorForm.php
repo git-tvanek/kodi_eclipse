@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Forms;
 
-use App\Model\Author;
+use App\Entity\Author;
 use Nette\Application\UI\Form;
 use Nette\SmartObject;
 use Nette\Utils\ArrayHash;

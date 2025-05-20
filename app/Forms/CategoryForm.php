@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Forms;
 
-use App\Model\Category;
+use App\Entity\Category;
 use App\Service\ICategoryService;
 use Nette\Application\UI\Form;
 use Nette\SmartObject;

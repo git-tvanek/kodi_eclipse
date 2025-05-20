@@ -7,7 +7,7 @@ namespace App\Forms;
 use App\Service\ICategoryService;
 use App\Service\IAuthorService;
 use App\Service\ITagService;
-use App\Model\Addon;
+use App\Entity\Addon;
 use Nette\Application\UI\Form;
 use Nette\SmartObject;
 use Nette\Utils\ArrayHash;

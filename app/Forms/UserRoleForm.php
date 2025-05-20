@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Forms;
 
-use App\Model\User;
+use App\Entity\User;
 use App\Service\IRoleService;
 use Nette\Application\UI\Form;
 use Nette\SmartObject;
