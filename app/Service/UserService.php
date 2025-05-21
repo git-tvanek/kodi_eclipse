@@ -8,8 +8,7 @@ use App\Entity\User;
 use App\Repository\UserRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Factory\UserFactory;
-use App\Service\Interface;
+use App\Factory\Interface\IFactoryManager;
 use Nette\Utils\Random;
 
 /**
@@ -23,22 +22,15 @@ class UserService extends BaseService implements IUserService
     /** @var UserRepository */
     private UserRepository $userRepository;
     
-    /** @var UserFactory */
-    private UserFactory $userFactory;
-    
     /**
      * Konstruktor
-     *
-     * @param UserRepository $userRepository
-     * @param UserFactory $userFactory
      */
     public function __construct(
         UserRepository $userRepository,
-        UserFactory $userFactory
+        IFactoryManager $factoryManager
     ) {
-        parent::__construct();
+        parent::__construct($factoryManager);
         $this->userRepository = $userRepository;
-        $this->userFactory = $userFactory;
         $this->entityClass = User::class;
     }
     
@@ -73,8 +65,21 @@ class UserService extends BaseService implements IUserService
             throw new \Exception("Email '$email' je již používán.");
         }
         
-        $user = $this->userFactory->createFromRegistration($username, $email, $password, $requireVerification);
-        return $this->save($user);
+        $data = [
+            'username' => $username,
+            'email' => $email,
+            'password' => $password,
+            'is_active' => true,
+            'is_verified' => !$requireVerification
+        ];
+        
+        // Pokud je vyžadována verifikace, vygenerujeme token
+        if ($requireVerification) {
+            $data['verification_token'] = Random::generate(32);
+        }
+        
+        $user = $this->factoryManager->createUser($data);
+        return $this->userRepository->create($user);
     }
     
     /**
@@ -95,7 +100,7 @@ class UserService extends BaseService implements IUserService
         }
         
         // Pokud uživatel neexistuje nebo není aktivní, vrátíme null
-        if (!$user || !$user->is_active) {
+        if (!$user || !$user->isActive()) {
             return null;
         }
         
@@ -105,7 +110,7 @@ class UserService extends BaseService implements IUserService
         }
         
         // Aktualizujeme poslední přihlášení
-        $this->updateLastLogin($user->id);
+        $this->updateLastLogin($user->getId());
         
         return $user;
     }
@@ -125,7 +130,7 @@ class UserService extends BaseService implements IUserService
             throw new \Exception("Uživatel s ID $id nebyl nalezen.");
         }
         
-        $updatedUser = $this->userFactory->createFromExisting($user, $data);
+        $updatedUser = $this->factoryManager->getUserFactory()->createFromExisting($user, $data, false);
         return $this->save($updatedUser);
     }
     
@@ -144,9 +149,9 @@ class UserService extends BaseService implements IUserService
             return false;
         }
         
-        $updatedUser = $this->userFactory->createFromExisting($user, [
+        $updatedUser = $this->factoryManager->getUserFactory()->createFromExisting($user, [
             'password' => $newPassword
-        ]);
+        ], false);
         
         return $this->save($updatedUser) > 0;
     }
@@ -161,7 +166,7 @@ class UserService extends BaseService implements IUserService
     {
         $user = $this->findByEmail($email);
         
-        if (!$user || !$user->is_active) {
+        if (!$user || !$user->isActive()) {
             return null;
         }
         
@@ -169,10 +174,10 @@ class UserService extends BaseService implements IUserService
         $token = Random::generate(32);
         $expires = new \DateTime('+24 hours');
         
-        $updatedUser = $this->userFactory->createFromExisting($user, [
+        $updatedUser = $this->factoryManager->getUserFactory()->createFromExisting($user, [
             'password_reset_token' => $token,
             'password_reset_expires' => $expires
-        ]);
+        ], false);
         
         $this->save($updatedUser);
         
@@ -194,11 +199,11 @@ class UserService extends BaseService implements IUserService
             return false;
         }
         
-        $updatedUser = $this->userFactory->createFromExisting($user, [
+        $updatedUser = $this->factoryManager->getUserFactory()->createFromExisting($user, [
             'password' => $newPassword,
             'password_reset_token' => null,
             'password_reset_expires' => null
-        ]);
+        ], false);
         
         return $this->save($updatedUser) > 0;
     }
@@ -217,10 +222,10 @@ class UserService extends BaseService implements IUserService
             return false;
         }
         
-        $updatedUser = $this->userFactory->createFromExisting($user, [
+        $updatedUser = $this->factoryManager->getUserFactory()->createFromExisting($user, [
             'is_verified' => true,
             'verification_token' => null
-        ]);
+        ], false);
         
         return $this->save($updatedUser) > 0;
     }

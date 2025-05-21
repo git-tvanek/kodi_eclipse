@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\Author;
+use App\Entity\Author;
 use App\Repository\AuthorRepository;
 use App\Collection\PaginatedCollection;
-use App\Factory\AuthorFactory;
+use App\Factory\Interface\IFactoryManager;
 
 /**
  * Implementace služby pro autory
@@ -17,25 +17,18 @@ use App\Factory\AuthorFactory;
  */
 class AuthorService extends BaseService implements IAuthorService
 {
-    /** @var AuthorRepository */
+     /** @var AuthorRepository */
     private AuthorRepository $authorRepository;
-    
-    /** @var AuthorFactory */
-    private AuthorFactory $authorFactory;
     
     /**
      * Konstruktor
-     * 
-     * @param AuthorRepository $authorRepository
-     * @param AuthorFactory $authorFactory
      */
     public function __construct(
         AuthorRepository $authorRepository,
-        AuthorFactory $authorFactory
+        IFactoryManager $factoryManager
     ) {
-        parent::__construct();
+        parent::__construct($factoryManager);
         $this->authorRepository = $authorRepository;
-        $this->authorFactory = $authorFactory;
         $this->entityClass = Author::class;
     }
     
@@ -57,7 +50,7 @@ class AuthorService extends BaseService implements IAuthorService
      */
     public function create(array $data): int
     {
-        $author = $this->authorFactory->create($data);
+        $author = $this->factoryManager->createAuthor($data);
         return $this->authorRepository->create($author);
     }
     
@@ -77,7 +70,7 @@ class AuthorService extends BaseService implements IAuthorService
             throw new \Exception("Autor s ID {$id} nebyl nalezen.");
         }
         
-        $updatedAuthor = $this->authorFactory->createFromExisting($author, $data, false);
+        $updatedAuthor = $this->factoryManager->getAuthorFactory()->createFromExisting($author, $data, false);
         return $this->save($updatedAuthor);
     }
     

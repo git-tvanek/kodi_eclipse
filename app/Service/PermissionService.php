@@ -8,8 +8,7 @@ use App\Entity\Permission;
 use App\Repository\PermissionRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Factory\PermissionFactory;
-use App\Service\Interface;
+use App\Factory\Interface\IFactoryManager;
 
 /**
  * Implementace služby pro oprávnění
@@ -19,25 +18,18 @@ use App\Service\Interface;
  */
 class PermissionService extends BaseService implements IPermissionService
 {
-    /** @var PermissionRepository */
+     /** @var PermissionRepository */
     private PermissionRepository $permissionRepository;
-    
-    /** @var PermissionFactory */
-    private PermissionFactory $permissionFactory;
     
     /**
      * Konstruktor
-     *
-     * @param PermissionRepository $permissionRepository
-     * @param PermissionFactory $permissionFactory
      */
     public function __construct(
         PermissionRepository $permissionRepository,
-        PermissionFactory $permissionFactory
+        IFactoryManager $factoryManager
     ) {
-        parent::__construct();
+        parent::__construct($factoryManager);
         $this->permissionRepository = $permissionRepository;
-        $this->permissionFactory = $permissionFactory;
         $this->entityClass = Permission::class;
     }
     
@@ -62,8 +54,15 @@ class PermissionService extends BaseService implements IPermissionService
      */
     public function createPermission(string $name, string $resource, string $action, ?string $description = null): int
     {
-        $permission = $this->permissionFactory->createPermission($name, $resource, $action, $description);
-        return $this->save($permission);
+        $data = [
+            'name' => $name,
+            'resource' => $resource,
+            'action' => $action,
+            'description' => $description
+        ];
+        
+        $permission = $this->factoryManager->createPermission($data);
+        return $this->permissionRepository->create($permission);
     }
     
     /**
@@ -81,8 +80,8 @@ class PermissionService extends BaseService implements IPermissionService
             throw new \Exception("Oprávnění s ID $id nebylo nalezeno.");
         }
         
-        $updatedPermission = $this->permissionFactory->createFromExisting($permission, $data);
-        return $this->save($updatedPermission);
+        $updatedPermission = $this->factoryManager->getPermissionFactory()->createFromExisting($permission, $data, false);
+        return $this->permissionRepository->update($updatedPermission);
     }
     
     /**

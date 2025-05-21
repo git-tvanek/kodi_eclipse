@@ -9,8 +9,7 @@ use App\Entity\Screenshot;
 use App\Repository\AddonRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Factory\AddonFactory;
-use App\Factory\ScreenshotFactory;
+use App\Factory\Interface\IFactoryManager;
 use Nette\Utils\Strings;
 use Nette\Http\FileUpload;
 use Nette\Utils\FileSystem;
@@ -23,36 +22,22 @@ use Nette\Utils\FileSystem;
  */
 class AddonService extends BaseService implements IAddonService
 {
-    /** @var AddonRepository */
+     /** @var AddonRepository */
     private AddonRepository $addonRepository;
-    
-    /** @var AddonFactory */
-    private AddonFactory $addonFactory;
-    
-    /** @var ScreenshotFactory */
-    private ScreenshotFactory $screenshotFactory;
     
     /** @var string */
     private string $uploadsDir;
     
     /**
      * Konstruktor
-     * 
-     * @param AddonRepository $addonRepository
-     * @param AddonFactory $addonFactory
-     * @param ScreenshotFactory $screenshotFactory
-     * @param string $uploadsDir
      */
     public function __construct(
         AddonRepository $addonRepository,
-        AddonFactory $addonFactory,
-        ScreenshotFactory $screenshotFactory,
+        IFactoryManager $factoryManager,
         string $uploadsDir = 'uploads'
     ) {
-        parent::__construct();
+        parent::__construct($factoryManager);
         $this->addonRepository = $addonRepository;
-        $this->addonFactory = $addonFactory;
-        $this->screenshotFactory = $screenshotFactory;
         $this->entityClass = Addon::class;
         $this->uploadsDir = $uploadsDir;
     }
@@ -162,6 +147,37 @@ class AddonService extends BaseService implements IAddonService
     }
     
     /**
+     * Vytvoří nový doplněk
+     * 
+     * @param array $data Data pro vytvoření doplňku
+     * @return int ID vytvořeného doplňku
+     */
+    public function createAddon(array $data): int
+    {
+        $addon = $this->factoryManager->createAddon($data);
+        return $this->addonRepository->create($addon);
+    }
+    
+    /**
+     * Aktualizuje existující doplněk
+     * 
+     * @param int $id ID doplňku
+     * @param array $data Data pro aktualizaci
+     * @return int ID aktualizovaného doplňku
+     */
+    public function updateAddon(int $id, array $data): int
+    {
+        $addon = $this->findById($id);
+        
+        if (!$addon) {
+            throw new \Exception("Doplněk s ID $id nebyl nalezen.");
+        }
+        
+        $updatedAddon = $this->factoryManager->getAddonFactory()->createFromExisting($addon, $data, false);
+        return $this->addonRepository->update($updatedAddon);
+    }
+    
+    /**
      * Uloží doplněk s přidruženými daty
      * 
      * @param Addon $addon
@@ -180,12 +196,12 @@ class AddonService extends BaseService implements IAddonService
         // Zpracování nahraných souborů
         if (isset($uploads['icon']) && $uploads['icon'] instanceof FileUpload && $uploads['icon']->isOk()) {
             $iconPath = $this->processImageUpload($uploads['icon'], 'icons');
-            $addon->icon_url = $iconPath;
+            $addon->setIconUrl($iconPath);
         }
         
         if (isset($uploads['fanart']) && $uploads['fanart'] instanceof FileUpload && $uploads['fanart']->isOk()) {
             $fanartPath = $this->processImageUpload($uploads['fanart'], 'fanart');
-            $addon->fanart_url = $fanartPath;
+            $addon->setFanartUrl($fanartPath);
         }
         
         // Zpracování screenshotů
@@ -195,23 +211,26 @@ class AddonService extends BaseService implements IAddonService
                 if ($screenshotUpload instanceof FileUpload && $screenshotUpload->isOk()) {
                     $screenshotPath = $this->processImageUpload($screenshotUpload, 'screenshots');
                     
-                    $screenshot = new Screenshot();
-                    $screenshot->url = $screenshotPath;
-                    $screenshot->description = $screenshots[$index]['description'] ?? null;
-                    $screenshot->sort_order = $index;
+                    $screenshotData = [
+                        'url' => $screenshotPath,
+                        'description' => $screenshots[$index]['description'] ?? null,
+                        'sort_order' => $index,
+                        'addon' => $addon
+                    ];
                     
+                    $screenshot = $this->factoryManager->createScreenshot($screenshotData);
                     $processedScreenshots[] = $screenshot;
                 }
             }
         }
         
         // Zajištění, že slug je nastaven
-        if (empty($addon->slug)) {
-            $addon->slug = Strings::webalize($addon->name);
+        if (empty($addon->getSlug())) {
+            $addon->setSlug(Strings::webalize($addon->getName()));
         }
         
         // Uložení do databáze
-        if (isset($addon->id)) {
+        if ($addon->getId()) {
             return $this->addonRepository->updateWithRelated($addon, $processedScreenshots, $tagIds);
         } else {
             return $this->addonRepository->createWithRelated($addon, $processedScreenshots, $tagIds);

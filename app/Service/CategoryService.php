@@ -7,7 +7,7 @@ namespace App\Service;
 use App\Entity\Category;
 use App\Repository\CategoryRepository;
 use App\Collection\Collection;
-use App\Factory\CategoryFactory;
+use App\Factory\Interface\IFactoryManager;
 
 /**
  * Implementace služby pro kategorie
@@ -17,25 +17,18 @@ use App\Factory\CategoryFactory;
  */
 class CategoryService extends BaseService implements ICategoryService
 {
-    /** @var CategoryRepository */
+     /** @var CategoryRepository */
     private CategoryRepository $categoryRepository;
-    
-    /** @var CategoryFactory */
-    private CategoryFactory $categoryFactory;
     
     /**
      * Konstruktor
-     * 
-     * @param CategoryRepository $categoryRepository
-     * @param CategoryFactory $categoryFactory
      */
     public function __construct(
         CategoryRepository $categoryRepository,
-        CategoryFactory $categoryFactory
+        IFactoryManager $factoryManager
     ) {
-        parent::__construct();
+        parent::__construct($factoryManager);
         $this->categoryRepository = $categoryRepository;
-        $this->categoryFactory = $categoryFactory;
         $this->entityClass = Category::class;
     }
     
@@ -57,7 +50,7 @@ class CategoryService extends BaseService implements ICategoryService
      */
     public function create(array $data): int
     {
-        $category = $this->categoryFactory->create($data);
+        $category = $this->factoryManager->createCategory($data);
         return $this->categoryRepository->create($category);
     }
     
@@ -70,8 +63,13 @@ class CategoryService extends BaseService implements ICategoryService
      */
     public function createRoot(string $name, ?string $slug = null): int
     {
-        $category = $this->categoryFactory->createRoot($name, $slug);
-        return $this->categoryRepository->create($category);
+        $data = [
+            'name' => $name,
+            'slug' => $slug ?? \Nette\Utils\Strings::webalize($name),
+            'parent' => null
+        ];
+        
+        return $this->create($data);
     }
     
     /**
@@ -84,8 +82,13 @@ class CategoryService extends BaseService implements ICategoryService
      */
     public function createSubcategory(string $name, int $parentId, ?string $slug = null): int
     {
-        $category = $this->categoryFactory->createSubcategory($name, $parentId, $slug);
-        return $this->categoryRepository->create($category);
+        $data = [
+            'name' => $name,
+            'slug' => $slug ?? \Nette\Utils\Strings::webalize($name),
+            'parent_id' => $parentId
+        ];
+        
+        return $this->create($data);
     }
     
     /**
@@ -104,7 +107,7 @@ class CategoryService extends BaseService implements ICategoryService
             throw new \Exception("Kategorie s ID {$id} nebyla nalezena.");
         }
         
-        $updatedCategory = $this->categoryFactory->createFromExisting($category, $data, false);
+        $updatedCategory = $this->factoryManager->getCategoryFactory()->createFromExisting($category, $data, false);
         return $this->categoryRepository->update($updatedCategory);
     }
     
@@ -192,5 +195,4 @@ class CategoryService extends BaseService implements ICategoryService
     {
         return $this->categoryRepository->getHierarchyWithStats();
     }
-
 }

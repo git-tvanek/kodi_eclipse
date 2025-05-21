@@ -7,7 +7,8 @@ namespace App\Service;
 use App\Repository\AddonRepository;
 use App\Repository\AuthorRepository;
 use App\Repository\CategoryRepository;
-use App\Repository\ReviewRepository;
+use App\Repository\AddonReviewRepository;
+use App\Factory\Interface\IFactoryManager;
 use Nette\Database\Explorer;
 use Nette\Utils\DateTime;
 
@@ -27,11 +28,14 @@ class StatisticsService implements IStatisticsService
     /** @var CategoryRepository */
     private CategoryRepository $categoryRepository;
     
-    /** @var ReviewRepository */
-    private ReviewRepository $reviewRepository;
+    /** @var AddonReviewRepository */
+    private AddonReviewRepository $reviewRepository;
     
     /** @var Explorer */
     private Explorer $database;
+    
+    /** @var IFactoryManager */
+    private IFactoryManager $factoryManager;
     
     /**
      * Konstruktor
@@ -39,21 +43,24 @@ class StatisticsService implements IStatisticsService
      * @param AddonRepository $addonRepository
      * @param AuthorRepository $authorRepository
      * @param CategoryRepository $categoryRepository
-     * @param ReviewRepository $reviewRepository
+     * @param AddonReviewRepository $reviewRepository
      * @param Explorer $database
+     * @param IFactoryManager $factoryManager
      */
     public function __construct(
         AddonRepository $addonRepository,
         AuthorRepository $authorRepository,
         CategoryRepository $categoryRepository,
-        ReviewRepository $reviewRepository,
-        Explorer $database
+        AddonReviewRepository $reviewRepository,
+        Explorer $database,
+        IFactoryManager $factoryManager
     ) {
         $this->addonRepository = $addonRepository;
         $this->authorRepository = $authorRepository;
         $this->categoryRepository = $categoryRepository;
         $this->reviewRepository = $reviewRepository;
         $this->database = $database;
+        $this->factoryManager = $factoryManager;
     }
     
     /**

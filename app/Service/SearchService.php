@@ -8,6 +8,7 @@ use App\Repository\AddonRepository;
 use App\Repository\AuthorRepository;
 use App\Repository\TagRepository;
 use App\Repository\CategoryRepository;
+use App\Factory\Interface\IFactoryManager;
 
 /**
  * Implementace služby pro vyhledávání
@@ -28,6 +29,9 @@ class SearchService implements ISearchService
     /** @var CategoryRepository */
     private CategoryRepository $categoryRepository;
     
+    /** @var IFactoryManager */
+    private IFactoryManager $factoryManager;
+    
     /**
      * Konstruktor
      * 
@@ -35,17 +39,20 @@ class SearchService implements ISearchService
      * @param AuthorRepository $authorRepository
      * @param TagRepository $tagRepository
      * @param CategoryRepository $categoryRepository
+     * @param IFactoryManager $factoryManager
      */
     public function __construct(
         AddonRepository $addonRepository,
         AuthorRepository $authorRepository,
         TagRepository $tagRepository,
-        CategoryRepository $categoryRepository
+        CategoryRepository $categoryRepository,
+        IFactoryManager $factoryManager
     ) {
         $this->addonRepository = $addonRepository;
         $this->authorRepository = $authorRepository;
         $this->tagRepository = $tagRepository;
         $this->categoryRepository = $categoryRepository;
+        $this->factoryManager = $factoryManager;
     }
     
     /**
@@ -163,23 +170,23 @@ class SearchService implements ISearchService
     }
     
     /**
-    * Získá možnosti kategorií pro filtry
-    * 
-    * @return array
-    */
+     * Získá možnosti kategorií pro filtry
+     * 
+     * @return array
+     */
     private function getCategoryOptions(): array
     {
-    $categories = [];
-    $rows = $this->categoryRepository->findAll()->order('name ASC');
-    
-    foreach ($rows as $row) {
-        $categories[] = [
-            'id' => $row->id,
-            'name' => $row->name
-        ];
-    }
-    
-    return $categories;
+        $categories = [];
+        $rows = $this->categoryRepository->findAll()->order('name ASC');
+        
+        foreach ($rows as $row) {
+            $categories[] = [
+                'id' => $row->getId(),
+                'name' => $row->getName()
+            ];
+        }
+        
+        return $categories;
     }
     
     /**

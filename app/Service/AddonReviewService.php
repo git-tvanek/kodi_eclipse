@@ -8,35 +8,28 @@ use App\Entity\AddonReview;
 use App\Repository\AddonReviewRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Factory\ReviewFactory;
+use App\Factory\Interface\IFactoryManager;
 
 /**
  * Implementace služby pro recenze
  * 
  * @extends BaseService<AddonReview>
- * @implements IReviewService
+ * @implements IAddonReviewService
  */
 class AddonReviewService extends BaseService implements IAddonReviewService
 {
     /** @var AddonReviewRepository */
-    private AddonReviewRepository $AddonReviewRepository;
-    
-    /** @var ReviewFactory */
-    private ReviewFactory $reviewFactory;
+    private AddonReviewRepository $addonReviewRepository;
     
     /**
      * Konstruktor
-     * 
-     * @param AddonReviewRepository $AddonReviewRepository
-     * @param ReviewFactory $reviewFactory
      */
     public function __construct(
-        AddonReviewRepository $AddonReviewRepository,
-        ReviewFactory $reviewFactory
+        AddonReviewRepository $addonReviewRepository,
+        IFactoryManager $factoryManager
     ) {
-        parent::__construct();
-        $this->AddonReviewRepository = $AddonReviewRepository;
-        $this->reviewFactory = $reviewFactory;
+        parent::__construct($factoryManager);
+        $this->addonReviewRepository = $addonReviewRepository;
         $this->entityClass = AddonReview::class;
     }
     
@@ -47,7 +40,7 @@ class AddonReviewService extends BaseService implements IAddonReviewService
      */
     protected function getRepository(): AddonReviewRepository
     {
-        return $this->AddonReviewRepository;
+        return $this->addonReviewRepository;
     }
     
     /**
@@ -61,8 +54,16 @@ class AddonReviewService extends BaseService implements IAddonReviewService
      */
     public function createFromUser(int $addonId, int $userId, int $rating, ?string $comment = null): int
     {
-        $review = $this->reviewFactory->createFromUser($addonId, $userId, $rating, $comment);
-        return $this->AddonReviewRepository->create($review);
+        $data = [
+            'addon_id' => $addonId,
+            'user_id' => $userId,
+            'rating' => $rating,
+            'comment' => $comment,
+            'is_verified' => true // Přihlášený uživatel je automaticky verifikovaný
+        ];
+        
+        $review = $this->factoryManager->createAddonReview($data);
+        return $this->addonReviewRepository->create($review);
     }
     
     /**
@@ -77,8 +78,17 @@ class AddonReviewService extends BaseService implements IAddonReviewService
      */
     public function createFromGuest(int $addonId, string $name, ?string $email, int $rating, ?string $comment = null): int
     {
-        $review = $this->reviewFactory->createFromGuest($addonId, $name, $email, $rating, $comment);
-        return $this->AddonReviewRepository->create($review);
+        $data = [
+            'addon_id' => $addonId,
+            'name' => $name,
+            'email' => $email,
+            'rating' => $rating,
+            'comment' => $comment,
+            'is_verified' => false // Anonymní uživatel není automaticky verifikovaný
+        ];
+        
+        $review = $this->factoryManager->createAddonReview($data);
+        return $this->addonReviewRepository->create($review);
     }
     
     /**
@@ -89,7 +99,7 @@ class AddonReviewService extends BaseService implements IAddonReviewService
      */
     public function findByAddon(int $addonId): Collection
     {
-        return $this->AddonReviewRepository->findByAddon($addonId);
+        return $this->addonReviewRepository->findByAddon($addonId);
     }
     
     /**
@@ -109,7 +119,7 @@ class AddonReviewService extends BaseService implements IAddonReviewService
         int $page = 1, 
         int $itemsPerPage = 10
     ): PaginatedCollection {
-        return $this->AddonReviewRepository->findWithFilters(
+        return $this->addonReviewRepository->findWithFilters(
             $filters, 
             $sortBy, 
             $sortDir, 
@@ -126,7 +136,7 @@ class AddonReviewService extends BaseService implements IAddonReviewService
      */
     public function getSentimentAnalysis(int $addonId): array
     {
-        return $this->AddonReviewRepository->getSentimentAnalysis($addonId);
+        return $this->addonReviewRepository->getSentimentAnalysis($addonId);
     }
     
     /**
@@ -139,7 +149,7 @@ class AddonReviewService extends BaseService implements IAddonReviewService
      */
     public function getReviewActivityOverTime(int $addonId, string $interval = 'month', int $limit = 12): array
     {
-        return $this->AddonReviewRepository->getReviewActivityOverTime($addonId, $interval, $limit);
+        return $this->addonReviewRepository->getReviewActivityOverTime($addonId, $interval, $limit);
     }
     
     /**
@@ -150,7 +160,7 @@ class AddonReviewService extends BaseService implements IAddonReviewService
      */
     public function getMostRecentReviews(int $limit = 10): array
     {
-        return $this->AddonReviewRepository->getMostRecentReviews($limit);
+        return $this->addonReviewRepository->getMostRecentReviews($limit);
     }
     
     /**
@@ -163,7 +173,7 @@ class AddonReviewService extends BaseService implements IAddonReviewService
      */
     public function getReviewsByRating(int $rating, int $page = 1, int $itemsPerPage = 10): PaginatedCollection
     {
-        return $this->AddonReviewRepository->getReviewsByRating($rating, $page, $itemsPerPage);
+        return $this->addonReviewRepository->getReviewsByRating($rating, $page, $itemsPerPage);
     }
     
     /**
@@ -175,6 +185,6 @@ class AddonReviewService extends BaseService implements IAddonReviewService
      */
     public function findCommonKeywords(int $addonId, int $limit = 10): array
     {
-        return $this->AddonReviewRepository->findCommonKeywords($addonId, $limit);
+        return $this->addonReviewRepository->findCommonKeywords($addonId, $limit);
     }
 }

@@ -8,7 +8,7 @@ use App\Entity\Tag;
 use App\Repository\TagRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Factory\TagFactory;
+use App\Factory\Interface\IFactoryManager;
 
 /**
  * Implementace služby pro tagy
@@ -21,22 +21,15 @@ class TagService extends BaseService implements ITagService
     /** @var TagRepository */
     private TagRepository $tagRepository;
     
-    /** @var TagFactory */
-    private TagFactory $tagFactory;
-    
     /**
      * Konstruktor
-     * 
-     * @param TagRepository $tagRepository
-     * @param TagFactory $tagFactory
      */
     public function __construct(
         TagRepository $tagRepository,
-        TagFactory $tagFactory
+        IFactoryManager $factoryManager
     ) {
-        parent::__construct();
+        parent::__construct($factoryManager);
         $this->tagRepository = $tagRepository;
-        $this->tagFactory = $tagFactory;
         $this->entityClass = Tag::class;
     }
     
@@ -58,39 +51,28 @@ class TagService extends BaseService implements ITagService
      */
     public function create(array $data): int
     {
-        $tag = $this->tagFactory->create($data);
+        $tag = $this->factoryManager->createTag($data);
         return $this->tagRepository->create($tag);
     }
 
     /**
      * Aktualizuje existující tag
-    * 
-    * @param int $id ID tagu
+     * 
+     * @param int $id ID tagu
      * @param array $data Data pro aktualizaci
      * @return int ID aktualizovaného tagu
      */
     public function update(int $id, array $data): int
     {
-    // Získání existujícího tagu
-    $tag = $this->findById($id);
-    if (!$tag) {
-        throw new \Exception("Tag s ID {$id} nebyl nalezen.");
-    }
-    
-    // Aktualizace vlastností tagu
-    if (isset($data['name'])) {
-        $tag->name = $data['name'];
-    }
-    
-    if (isset($data['slug'])) {
-        $tag->slug = $data['slug'];
-    } else if (isset($data['name'])) {
-        // Automatické vytvoření slugu, pokud byl změněn název
-        $tag->slug = \Nette\Utils\Strings::webalize($data['name']);
-    }
-    
-    // Použití TagRepository pro aktualizaci
-    return $this->tagRepository->update($tag);
+        // Získání existujícího tagu
+        $tag = $this->findById($id);
+        if (!$tag) {
+            throw new \Exception("Tag s ID {$id} nebyl nalezen.");
+        }
+        
+        // Aktualizace tagu pomocí továrny
+        $updatedTag = $this->factoryManager->getTagFactory()->createFromExisting($tag, $data, false);
+        return $this->tagRepository->update($updatedTag);
     }
     
     /**
@@ -101,8 +83,12 @@ class TagService extends BaseService implements ITagService
      */
     public function createWithName(string $name): int
     {
-        $tag = $this->tagFactory->createWithName($name);
-        return $this->tagRepository->create($tag);
+        $data = [
+            'name' => $name,
+            'slug' => \Nette\Utils\Strings::webalize($name)
+        ];
+        
+        return $this->create($data);
     }
     
     /**
@@ -114,10 +100,9 @@ class TagService extends BaseService implements ITagService
     public function createBatch(array $names): array
     {
         $ids = [];
-        $tags = $this->tagFactory->createBatch($names);
         
-        foreach ($tags as $tag) {
-            $ids[] = $this->tagRepository->create($tag);
+        foreach ($names as $name) {
+            $ids[] = $this->createWithName($name);
         }
         
         return $ids;
@@ -142,7 +127,14 @@ class TagService extends BaseService implements ITagService
      */
     public function findOrCreate(string $name): int
     {
-        return $this->tagRepository->findOrCreate($name);
+        $slug = \Nette\Utils\Strings::webalize($name);
+        $tag = $this->findBySlug($slug);
+        
+        if ($tag) {
+            return $tag->getId();
+        }
+        
+        return $this->createWithName($name);
     }
     
     /**
@@ -216,14 +208,14 @@ class TagService extends BaseService implements ITagService
         return $this->tagRepository->findTagsByCategories($categoryIds, $limit);
     }
 
- /**
- * Najde tagy přiřazené k doplňku
- * 
- * @param int $addonId ID doplňku
- * @return Collection<Tag>
- */
-public function findByAddon(int $addonId): Collection
-{
-    return $this->tagRepository->findByAddon($addonId);
-}
+    /**
+     * Najde tagy přiřazené k doplňku
+     * 
+     * @param int $addonId ID doplňku
+     * @return Collection<Tag>
+     */
+    public function findByAddon(int $addonId): Collection
+    {
+        return $this->tagRepository->findByAddon($addonId);
+    }
 }

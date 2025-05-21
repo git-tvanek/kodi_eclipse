@@ -8,8 +8,7 @@ use App\Entity\Role;
 use App\Repository\RoleRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use App\Factory\RoleFactory;
-use App\Service\Interface;
+use App\Factory\Interface\IFactoryManager;
 
 /**
  * Implementace služby pro role
@@ -19,25 +18,18 @@ use App\Service\Interface;
  */
 class RoleService extends BaseService implements IRoleService
 {
-    /** @var RoleRepository */
+      /** @var RoleRepository */
     private RoleRepository $roleRepository;
-    
-    /** @var RoleFactory */
-    private RoleFactory $roleFactory;
     
     /**
      * Konstruktor
-     *
-     * @param RoleRepository $roleRepository
-     * @param RoleFactory $roleFactory
      */
     public function __construct(
         RoleRepository $roleRepository,
-        RoleFactory $roleFactory
+        IFactoryManager $factoryManager
     ) {
-        parent::__construct();
+        parent::__construct($factoryManager);
         $this->roleRepository = $roleRepository;
-        $this->roleFactory = $roleFactory;
         $this->entityClass = Role::class;
     }
     
@@ -62,8 +54,20 @@ class RoleService extends BaseService implements IRoleService
      */
     public function createRole(string $name, ?string $code = null, ?string $description = null, int $priority = 0): int
     {
-        $role = $this->roleFactory->createFromName($name, $code, $description, $priority);
-        return $this->save($role);
+        // Pokud není zadán kód, vygenerujeme ho z názvu
+        if ($code === null) {
+            $code = \Nette\Utils\Strings::webalize($name);
+        }
+        
+        $data = [
+            'name' => $name,
+            'code' => $code,
+            'description' => $description,
+            'priority' => $priority
+        ];
+        
+        $role = $this->factoryManager->createRole($data);
+        return $this->roleRepository->create($role);
     }
     
     /**
@@ -81,8 +85,8 @@ class RoleService extends BaseService implements IRoleService
             throw new \Exception("Role s ID $id nebyla nalezena.");
         }
         
-        $updatedRole = $this->roleFactory->createFromExisting($role, $data);
-        return $this->save($updatedRole);
+        $updatedRole = $this->factoryManager->getRoleFactory()->createFromExisting($role, $data, false);
+        return $this->roleRepository->update($updatedRole);
     }
     
     /**

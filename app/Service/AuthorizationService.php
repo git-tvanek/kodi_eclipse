@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Model\User;
 use App\Repository\UserRepository;
 use App\Repository\RoleRepository;
 use App\Repository\PermissionRepository;
 use App\Service\Interface\IAuthorizationService;
+use App\Factory\Interface\IFactoryManager;
 use Nette\Caching\Cache;
 use Nette\Caching\Storage;
 
@@ -26,6 +26,9 @@ class AuthorizationService implements IAuthorizationService
     /** @var PermissionRepository */
     private PermissionRepository $permissionRepository;
     
+    /** @var IFactoryManager */
+    private IFactoryManager $factoryManager;
+    
     /** @var Cache|null */
     private ?Cache $cache;
     
@@ -35,17 +38,20 @@ class AuthorizationService implements IAuthorizationService
      * @param UserRepository $userRepository
      * @param RoleRepository $roleRepository
      * @param PermissionRepository $permissionRepository
+     * @param IFactoryManager $factoryManager
      * @param Storage|null $cacheStorage
      */
     public function __construct(
         UserRepository $userRepository,
         RoleRepository $roleRepository,
         PermissionRepository $permissionRepository,
+        IFactoryManager $factoryManager,
         ?Storage $cacheStorage = null
     ) {
         $this->userRepository = $userRepository;
         $this->roleRepository = $roleRepository;
         $this->permissionRepository = $permissionRepository;
+        $this->factoryManager = $factoryManager;
         $this->cache = $cacheStorage ? new Cache($cacheStorage, 'authorization') : null;
     }
     
@@ -74,7 +80,7 @@ class AuthorizationService implements IAuthorizationService
         
         // Kontrola oprávnění
         foreach ($permissions as $permission) {
-            if ($permission->resource === $resource && $permission->action === $action) {
+            if ($permission->getResource() === $resource && $permission->getAction() === $action) {
                 // Oprávnění nalezeno
                 if ($this->cache) {
                     $this->cache->save($cacheKey, true, [
@@ -126,7 +132,7 @@ class AuthorizationService implements IAuthorizationService
         
         // Kontrola, zda uživatel má danou roli
         foreach ($userRoles as $userRole) {
-            if ($userRole->id === $role->id) {
+            if ($userRole->getId() === $role->getId()) {
                 if ($this->cache) {
                     $this->cache->save($cacheKey, true, [
                         Cache::Expire => '30 minutes',
@@ -205,11 +211,11 @@ class AuthorizationService implements IAuthorizationService
         
         foreach ($permissions as $permission) {
             $result[] = [
-                'id' => $permission->id,
-                'name' => $permission->name,
-                'resource' => $permission->resource,
-                'action' => $permission->action,
-                'description' => $permission->description
+                'id' => $permission->getId(),
+                'name' => $permission->getName(),
+                'resource' => $permission->getResource(),
+                'action' => $permission->getAction(),
+                'description' => $permission->getDescription()
             ];
         }
         

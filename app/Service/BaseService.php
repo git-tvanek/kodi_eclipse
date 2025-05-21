@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 use App\Repository\BaseRepository;
+use App\Factory\Interface\IFactoryManager;
 
 /**
  * Základní implementace služby
@@ -19,11 +20,17 @@ abstract class BaseService implements IBaseService
     /** @var string Název třídy entity */
     protected string $entityClass;
     
+    /** @var IFactoryManager */
+    protected IFactoryManager $factoryManager;
+    
     /**
      * Konstruktor
+     * 
+     * @param IFactoryManager $factoryManager
      */
-    public function __construct()
+    public function __construct(IFactoryManager $factoryManager)
     {
+        $this->factoryManager = $factoryManager;
     }
     
     /**
@@ -44,14 +51,7 @@ abstract class BaseService implements IBaseService
      */
     public function findAll(): Collection
     {
-        $results = $this->getRepository()->findAll();
-        $entities = [];
-        
-        foreach ($results as $row) {
-            $entities[] = call_user_func([$this->entityClass, 'fromArray'], $row->toArray());
-        }
-        
-        return new Collection($entities);
+        return $this->getRepository()->findAll();
     }
     
     /**
@@ -78,6 +78,44 @@ abstract class BaseService implements IBaseService
             $orderColumn, 
             $orderDir
         );
+    }
+    
+    /**
+     * Vytvoří novou entitu
+     * 
+     * @param array $data
+     * @return int ID vytvořené entity
+     */
+    public function create(array $data): int
+    {
+        // Použití obecné metody getFactoryForEntity pro získání správné továrny
+        $factory = $this->factoryManager->getFactoryForEntity($this->entityClass);
+        $entity = $factory->create($data);
+        
+        return $this->getRepository()->create($entity);
+    }
+    
+    /**
+     * Aktualizuje existující entitu
+     * 
+     * @param int $id
+     * @param array $data
+     * @return int ID aktualizované entity
+     * @throws \Exception Pokud entita s daným ID neexistuje
+     */
+    public function update(int $id, array $data): int
+    {
+        $entity = $this->findById($id);
+        
+        if (!$entity) {
+            throw new \Exception("Entita s ID {$id} nebyla nalezena.");
+        }
+        
+        // Použití obecné metody getFactoryForEntity pro získání správné továrny
+        $factory = $this->factoryManager->getFactoryForEntity($this->entityClass);
+        $updatedEntity = $factory->createFromExisting($entity, $data, false);
+        
+        return $this->getRepository()->update($updatedEntity);
     }
     
     /**
