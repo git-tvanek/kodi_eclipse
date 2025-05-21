@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\AddonReview;
-use App\Repository\AddonReviewRepository;
+use App\Repository\Interface\IAddonReviewRepository;
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
 use App\Factory\Interface\IFactoryManager;
@@ -18,14 +18,14 @@ use App\Factory\Interface\IFactoryManager;
  */
 class AddonReviewService extends BaseService implements IAddonReviewService
 {
-    /** @var AddonReviewRepository */
-    private AddonReviewRepository $addonReviewRepository;
+    /** @var IAddonReviewRepository */
+    private IAddonReviewRepository $addonReviewRepository;
     
     /**
      * Konstruktor
      */
     public function __construct(
-        AddonReviewRepository $addonReviewRepository,
+        IAddonReviewRepository $addonReviewRepository,
         IFactoryManager $factoryManager
     ) {
         parent::__construct($factoryManager);
@@ -36,9 +36,9 @@ class AddonReviewService extends BaseService implements IAddonReviewService
     /**
      * Získá repozitář pro entitu
      * 
-     * @return AddonReviewRepository
+     * @return IAddonReviewRepository
      */
-    protected function getRepository(): AddonReviewRepository
+    protected function getRepository(): IAddonReviewRepository
     {
         return $this->addonReviewRepository;
     }
