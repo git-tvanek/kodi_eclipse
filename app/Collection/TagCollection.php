@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Collection;
 
-use App\Model\Tag;
+use App\Entity\Tag;
 
 /**
  * Typovaná kolekce pro tagy

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Collection;
 
-use App\Model\Author;
+use App\Entity\Author;
 
 /**
  * Typovaná kolekce pro autory
