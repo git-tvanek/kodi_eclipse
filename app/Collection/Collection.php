@@ -799,4 +799,649 @@ class Collection implements Countable, Iterator, ArrayAccess
         
         return null;
     }
+
+/**
+ * Najde minimální hodnotu v kolekci
+ * 
+ * @param string|null $field Název pole (null = porovnávání celých objektů)
+ * @return mixed Minimální hodnota nebo null pro prázdnou kolekci
+ */
+public function min(?string $field = null): mixed
+{
+ if ($this->isEmpty()) {
+        return null;
+    }
+    
+    if ($field === null) {
+        return $this->reduce(function($min, $item) {
+            return $min === null || $item < $min ? $item : $min;
+        }, null); // ✅ Přidán druhý parametr
+    }
+    
+    return $this->reduce(function($min, $item) use ($field) {
+        $value = $this->getFieldValue($item, $field);
+        return $min === null || ($value !== null && $value < $min) ? $value : $min;
+    }, null); // ✅ Přidán druhý parametr
+}
+
+/**
+ * Najde maximální hodnotu v kolekci
+ * 
+ * @param string|null $field Název pole (null = porovnávání celých objektů)
+ * @return mixed Maximální hodnota nebo null pro prázdnou kolekci
+ */
+public function max(?string $field = null): mixed
+{
+   if ($this->isEmpty()) {
+        return null;
+    }
+    
+    if ($field === null) {
+        return $this->reduce(function($max, $item) {
+            return $max === null || $item > $max ? $item : $max;
+        }, null); // ✅ Přidán druhý parametr
+    }
+    
+    return $this->reduce(function($max, $item) use ($field) {
+        $value = $this->getFieldValue($item, $field);
+        return $max === null || ($value !== null && $value > $max) ? $value : $max;
+    }, null); // ✅ Přidán druhý parametr
+}
+
+/**
+ * Najde prvek s minimální hodnotou a vrátí celý objekt
+ * 
+ * @param string $field Název pole pro porovnání
+ * @return mixed Objekt s minimální hodnotou nebo null
+ */
+public function minBy(string $field): mixed
+{
+    if ($this->isEmpty()) {
+        return null;
+    }
+    
+    return $this->reduce(function($minItem, $item) use ($field) {
+        if ($minItem === null) {
+            return $item;
+        }
+        
+        $minValue = $this->getFieldValue($minItem, $field);
+        $currentValue = $this->getFieldValue($item, $field);
+        
+        return $currentValue < $minValue ? $item : $minItem;
+    }, null); // ✅ Přidán druhý parametr
+}
+
+/**
+ * Najde prvek s maximální hodnotou a vrátí celý objekt
+ * 
+ * @param string $field Název pole pro porovnání
+ * @return mixed Objekt s maximální hodnotou nebo null
+ */
+public function maxBy(string $field): mixed
+{
+    if ($this->isEmpty()) {
+        return null;
+    }
+    
+    return $this->reduce(function($maxItem, $item) use ($field) {
+        if ($maxItem === null) {
+            return $item;
+        }
+        
+        $maxValue = $this->getFieldValue($maxItem, $field);
+        $currentValue = $this->getFieldValue($item, $field);
+        
+        return $currentValue > $maxValue ? $item : $maxItem;
+    }, null); // ✅ Přidán druhý parametr
+}
+
+// =============================================================================
+// 🧮 NUMERICKÉ OPERACE
+// =============================================================================
+
+/**
+ * Sečte hodnoty v kolekci
+ * 
+ * @param string|null $field Název pole (null = sčítání celých hodnot)
+ * @return int|float Součet hodnot
+ */
+public function sum(?string $field = null): int|float
+{
+    if ($field === null) {
+        return $this->reduce(function($sum, $item) {
+            return $sum + (is_numeric($item) ? $item : 0);
+        }, 0); // ✅ Správný initial value
+    }
+    
+    return $this->reduce(function($sum, $item) use ($field) {
+        $value = $this->getFieldValue($item, $field);
+        return $sum + (is_numeric($value) ? $value : 0);
+    }, 0); // ✅ Správný initial value
+}
+
+/**
+ * Vypočítá průměr hodnot v kolekci
+ * 
+ * @param string|null $field Název pole (null = průměr celých hodnot)
+ * @return float Průměrná hodnota (0.0 pro prázdnou kolekci)
+ */
+public function average(?string $field = null): float
+{
+    if ($this->isEmpty()) {
+        return 0.0;
+    }
+    
+    $sum = $this->sum($field);
+    return $sum / $this->count();
+}
+
+/**
+ * Alias pro average()
+ */
+public function avg(?string $field = null): float
+{
+    return $this->average($field);
+}
+
+/**
+ * Vypočítá medián hodnot v kolekci
+ * 
+ * @param string|null $field Název pole (null = medián celých hodnot)
+ * @return mixed Medián nebo null pro prázdnou kolekci
+ */
+public function median(?string $field = null): mixed
+{
+    if ($this->isEmpty()) {
+        return null;
+    }
+    
+    $values = $field ? $this->pluck($field) : $this->toArray();
+    $values = array_filter($values, 'is_numeric');
+    
+    if (empty($values)) {
+        return null;
+    }
+    
+    sort($values);
+    $count = count($values);
+    $middle = floor($count / 2);
+    
+    return $count % 2 === 0 
+        ? ($values[$middle - 1] + $values[$middle]) / 2
+        : $values[$middle];
+}
+
+/**
+ * Spočítá kolikrát se vyskytuje každá hodnota
+ * 
+ * @param string|null $field Název pole (null = počítání celých objektů)
+ * @return array Asociativní pole hodnota => počet
+ */
+public function countBy(?string $field = null): array
+{
+    $values = $field ? $this->pluck($field) : $this->toArray();
+    return array_count_values(array_map('strval', $values));
+}
+
+// =============================================================================
+// 🔍 LARAVEL-STYLE WHERE METODY
+// =============================================================================
+
+/**
+ * Filtruje podle pole a hodnoty s operátorem
+ * 
+ * @param string $field Název pole
+ * @param mixed $value Hodnota pro porovnání
+ * @param string $operator Operátor (=, !=, >, <, >=, <=, like, in, not_in)
+ * @return static<T> Nová instance kolekce
+ */
+public function where(string $field, mixed $value, string $operator = '='): static
+{
+    return $this->filter(function($item) use ($field, $value, $operator) {
+        $itemValue = $this->getFieldValue($item, $field);
+        
+        return match($operator) {
+            '=', '==' => $itemValue == $value,
+            '!=', '<>' => $itemValue != $value,
+            '>' => $itemValue > $value,
+            '<' => $itemValue < $value,
+            '>=' => $itemValue >= $value,
+            '<=' => $itemValue <= $value,
+            'like' => is_string($itemValue) && str_contains(strtolower($itemValue), strtolower($value)),
+            'in' => in_array($itemValue, (array)$value, true),
+            'not_in' => !in_array($itemValue, (array)$value, true),
+            default => throw new \InvalidArgumentException("Unsupported operator: $operator")
+        };
+    });
+}
+
+/**
+ * Filtruje podle rozsahu hodnot (včetně krajních bodů)
+ * 
+ * @param string $field Název pole
+ * @param mixed $min Minimální hodnota
+ * @param mixed $max Maximální hodnota
+ * @return static<T> Nová instance kolekce
+ */
+public function whereBetween(string $field, mixed $min, mixed $max): static
+{
+    return $this->filter(function($item) use ($field, $min, $max) {
+        $value = $this->getFieldValue($item, $field);
+        return $value >= $min && $value <= $max;
+    });
+}
+
+/**
+ * Filtruje podle toho, zda pole obsahuje jednu z hodnot
+ * 
+ * @param string $field Název pole
+ * @param array $values Pole hodnot
+ * @return static<T> Nová instance kolekce
+ */
+public function whereIn(string $field, array $values): static
+{
+    return $this->where($field, $values, 'in');
+}
+
+/**
+ * Filtruje podle toho, zda pole NEobsahuje žádnou z hodnot
+ * 
+ * @param string $field Název pole
+ * @param array $values Pole hodnot
+ * @return static<T> Nová instance kolekce
+ */
+public function whereNotIn(string $field, array $values): static
+{
+    return $this->where($field, $values, 'not_in');
+}
+
+/**
+ * Filtruje pouze prvky, kde pole není null
+ * 
+ * @param string $field Název pole
+ * @return static<T> Nová instance kolekce
+ */
+public function whereNotNull(string $field): static
+{
+    return $this->filter(function($item) use ($field) {
+        return $this->getFieldValue($item, $field) !== null;
+    });
+}
+
+/**
+ * Filtruje pouze prvky, kde pole je null
+ * 
+ * @param string $field Název pole
+ * @return static<T> Nová instance kolekce
+ */
+public function whereNull(string $field): static
+{
+    return $this->filter(function($item) use ($field) {
+        return $this->getFieldValue($item, $field) === null;
+    });
+}
+
+/**
+ * Filtruje podle toho, zda textové pole obsahuje daný substring
+ * 
+ * @param string $field Název pole
+ * @param string $needle Hledaný text
+ * @param bool $caseSensitive Case sensitive hledání?
+ * @return static<T> Nová instance kolekce
+ */
+public function whereContains(string $field, string $needle, bool $caseSensitive = false): static
+{
+    return $this->filter(function($item) use ($field, $needle, $caseSensitive) {
+        $value = (string)$this->getFieldValue($item, $field);
+        
+        return $caseSensitive 
+            ? str_contains($value, $needle)
+            : str_contains(strtolower($value), strtolower($needle));
+    });
+}
+
+/**
+ * Filtruje podle toho, zda textové pole začíná daným textem
+ * 
+ * @param string $field Název pole
+ * @param string $prefix Prefix
+ * @param bool $caseSensitive Case sensitive?
+ * @return static<T> Nová instance kolekce
+ */
+public function whereStartsWith(string $field, string $prefix, bool $caseSensitive = false): static
+{
+    return $this->filter(function($item) use ($field, $prefix, $caseSensitive) {
+        $value = (string)$this->getFieldValue($item, $field);
+        
+        return $caseSensitive 
+            ? str_starts_with($value, $prefix)
+            : str_starts_with(strtolower($value), strtolower($prefix));
+    });
+}
+
+/**
+ * Filtruje podle toho, zda textové pole končí daným textem
+ * 
+ * @param string $field Název pole
+ * @param string $suffix Suffix
+ * @param bool $caseSensitive Case sensitive?
+ * @return static<T> Nová instance kolekce
+ */
+public function whereEndsWith(string $field, string $suffix, bool $caseSensitive = false): static
+{
+    return $this->filter(function($item) use ($field, $suffix, $caseSensitive) {
+        $value = (string)$this->getFieldValue($item, $field);
+        
+        return $caseSensitive 
+            ? str_ends_with($value, $suffix)
+            : str_ends_with(strtolower($value), strtolower($suffix));
+    });
+}
+
+// =============================================================================
+// 🎲 UTILITY OPERACE
+// =============================================================================
+
+/**
+ * Obrátí pořadí prvků v kolekci
+ * 
+ * @return static<T> Nová instance s obráceným pořadím
+ */
+public function reverse(): static
+{
+    return new static(array_reverse($this->toArray(), true));
+}
+
+/**
+ * Náhodně zamíchá prvky v kolekci
+ * 
+ * @return static<T> Nová instance s náhodným pořadím
+ */
+public function shuffle(): static
+{
+    $items = $this->toArray();
+    shuffle($items);
+    return new static($items);
+}
+
+/**
+ * Vezme prvních N prvků z kolekce
+ * 
+ * @param int $count Počet prvků
+ * @return static<T> Nová instance s prvními N prvky
+ */
+public function take(int $count): static
+{
+    return $this->slice(0, $count);
+}
+
+/**
+ * Přeskočí prvních N prvků a vrátí zbytek
+ * 
+ * @param int $count Počet prvků k přeskočení
+ * @return static<T> Nová instance bez prvních N prvků
+ */
+public function skip(int $count): static
+{
+    return $this->slice($count);
+}
+
+/**
+ * Vezme posledních N prvků z kolekce
+ * 
+ * @param int $count Počet prvků
+ * @return static<T> Nová instance s posledními N prvky
+ */
+public function takeLast(int $count): static
+{
+    $totalCount = $this->count();
+    $startIndex = max(0, $totalCount - $count);
+    return $this->slice($startIndex);
+}
+
+/**
+ * Vybere náhodných N prvků z kolekce
+ * 
+ * @param int $count Počet prvků (default 1)
+ * @return static<T> Nová instance s náhodnými prvky
+ */
+public function random(int $count = 1): static
+{
+    if ($count <= 0) {
+        return new static([]);
+    }
+    
+    if ($count >= $this->count()) {
+        return $this->shuffle();
+    }
+    
+    return $this->shuffle()->take($count);
+}
+
+/**
+ * Vrátí náhodný prvek z kolekce
+ * 
+ * @return mixed Náhodný prvek nebo null pro prázdnou kolekci
+ */
+public function randomItem(): mixed
+{
+    if ($this->isEmpty()) {
+        return null;
+    }
+    
+    $items = $this->toArray();
+    return $items[array_rand($items)];
+}
+
+// =============================================================================
+// 🔄 POKROČILÉ TRANSFORMACE
+// =============================================================================
+
+/**
+ * Flatten víceúrovňové pole/kolekce do jedné úrovně
+ * 
+ * @param int $depth Hloubka flatteningu (0 = nekonečno)
+ * @return static<T> Nová instance s flattened daty
+ */
+public function flatten(int $depth = 0): static
+{
+    $result = [];
+    
+    foreach ($this as $item) {
+        if (is_array($item) || $item instanceof \Traversable) {
+            $flattened = ($depth > 1 || $depth === 0) 
+                ? (new static($item))->flatten($depth > 0 ? $depth - 1 : 0)->toArray()
+                : (is_array($item) ? $item : iterator_to_array($item));
+                
+            $result = array_merge($result, $flattened);
+        } else {
+            $result[] = $item;
+        }
+    }
+    
+    return new static($result);
+}
+
+/**
+ * Přidá prvky na začátek kolekce
+ * 
+ * @param mixed ...$items Prvky k přidání
+ * @return static<T> Nová instance s přidanými prvky
+ */
+public function prepend(mixed ...$items): static
+{
+    return new static(array_merge($items, $this->toArray()));
+}
+
+/**
+ * Přidá prvky na konec kolekce
+ * 
+ * @param mixed ...$items Prvky k přidání
+ * @return static<T> Nová instance s přidanými prvky
+ */
+public function append(mixed ...$items): static
+{
+    return new static(array_merge($this->toArray(), $items));
+}
+
+/**
+ * Rozdělí kolekci do párů klíč-hodnota podle dvou polí
+ * 
+ * @param string $keyField Pole pro klíče
+ * @param string $valueField Pole pro hodnoty
+ * @return array Asociativní pole
+ */
+public function mapToDictionary(string $keyField, string $valueField): array
+{
+    $result = [];
+    
+    foreach ($this as $item) {
+        $key = $this->getFieldValue($item, $keyField);
+        $value = $this->getFieldValue($item, $valueField);
+        
+        if ($key !== null) {
+            $result[$key] = $value;
+        }
+    }
+    
+    return $result;
+}
+
+/**
+ * Vytvoří lookup tabulku podle klíče
+ * 
+ * @param string $keyField Pole pro klíče
+ * @return array Asociativní pole klíč => objekt
+ */
+public function keyBy(string $keyField): array
+{
+    return $this->indexBy($keyField);
+}
+
+// =============================================================================
+// 📊 POKROČILÉ STATISTIKY
+// =============================================================================
+
+/**
+ * Vypočítá statistiky pro numerické pole
+ * 
+ * @param string $field Název pole
+ * @return array Pole se statistikami (count, sum, avg, min, max, median)
+ */
+public function stats(string $field): array
+{
+    $values = array_filter($this->pluck($field), 'is_numeric');
+    
+    if (empty($values)) {
+        return [
+            'count' => 0,
+            'sum' => 0,
+            'avg' => 0,
+            'min' => null,
+            'max' => null,
+            'median' => null
+        ];
+    }
+    
+    sort($values);
+    $count = count($values);
+    $sum = array_sum($values);
+    
+    return [
+        'count' => $count,
+        'sum' => $sum,
+        'avg' => $sum / $count,
+        'min' => min($values),
+        'max' => max($values),
+        'median' => $count % 2 === 0 
+            ? ($values[floor($count/2) - 1] + $values[floor($count/2)]) / 2
+            : $values[floor($count/2)]
+    ];
+}
+
+/**
+ * Vytvoří frekvence tabulku pro pole
+ * 
+ * @param string $field Název pole
+ * @param bool $sortByFrequency Seřadit podle frekvence?
+ * @return array Pole hodnota => frekvence
+ */
+public function frequencies(string $field, bool $sortByFrequency = true): array
+{
+    $frequencies = $this->countBy($field);
+    
+    if ($sortByFrequency) {
+        arsort($frequencies);
+    }
+    
+    return $frequencies;
+}
+
+// =============================================================================
+// 🔍 POKROČILÉ HLEDÁNÍ
+// =============================================================================
+
+/**
+ * Najde všechny prvky, které splňují všechny podmínky
+ * 
+ * @param array $conditions Pole podmínek ['field' => ['operator', 'value']]
+ * @return static<T> Nová instance s filtrovanými prvky
+ */
+public function whereAll(array $conditions): static
+{
+    return $this->filter(function($item) use ($conditions) {
+        foreach ($conditions as $field => $condition) {
+            [$operator, $value] = $condition;
+            $itemValue = $this->getFieldValue($item, $field);
+            
+            $matches = match($operator) {
+                '=' => $itemValue == $value,
+                '!=' => $itemValue != $value,
+                '>' => $itemValue > $value,
+                '<' => $itemValue < $value,
+                '>=' => $itemValue >= $value,
+                '<=' => $itemValue <= $value,
+                'in' => in_array($itemValue, (array)$value),
+                default => false
+            };
+            
+            if (!$matches) {
+                return false;
+            }
+        }
+        
+        return true;
+    });
+}
+
+/**
+ * Fulltext search přes více polí
+ * 
+ * @param string $query Hledaný text
+ * @param array $fields Pole pro hledání
+ * @param bool $caseSensitive Case sensitive?
+ * @return static<T> Nová instance s výsledky
+ */
+public function search(string $query, array $fields, bool $caseSensitive = false): static
+{
+    if (empty($query) || empty($fields)) {
+        return new static([]);
+    }
+    
+    $query = $caseSensitive ? $query : strtolower($query);
+    
+    return $this->filter(function($item) use ($query, $fields, $caseSensitive) {
+        foreach ($fields as $field) {
+            $value = (string)$this->getFieldValue($item, $field);
+            $value = $caseSensitive ? $value : strtolower($value);
+            
+            if (str_contains($value, $query)) {
+                return true;
+            }
+        }
+        
+        return false;
+    });
+    }
 }
