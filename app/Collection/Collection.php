@@ -39,12 +39,17 @@ class Collection implements Countable, Iterator, ArrayAccess
      */
     public function __construct(iterable $items = [])
     {
-        $this->collection = match (true) {
-            $items instanceof DoctrineCollection => $items,
-            $items instanceof \Traversable => new ArrayCollection(iterator_to_array($items)),
-            is_array($items) => new ArrayCollection(array_values($items)),
-            default => new ArrayCollection([])
-        };
+        try {
+            $this->collection = match (true) {
+                $items instanceof DoctrineCollection => $items,
+                $items instanceof \Traversable => new ArrayCollection(iterator_to_array($items)),
+                is_array($items) => new ArrayCollection(array_values($items)),
+                default => new ArrayCollection([])
+            };
+        } catch (\Throwable $e) {
+            // Fallback pro bezpečnost
+            $this->collection = new ArrayCollection([]);
+        }
         
         $this->refreshIteratorCache();
     }
@@ -749,6 +754,7 @@ class Collection implements Countable, Iterator, ArrayAccess
     /**
      * Refresh iterator cache when collection changes
      */
+   
     private function refreshIteratorCache(): void
     {
         $this->iteratorCache = array_values($this->collection->toArray());
@@ -807,22 +813,22 @@ class Collection implements Countable, Iterator, ArrayAccess
  * @return mixed Minimální hodnota nebo null pro prázdnou kolekci
  */
 public function min(?string $field = null): mixed
-{
- if ($this->isEmpty()) {
-        return null;
+    {
+        if ($this->isEmpty()) {
+            return null;
+        }
+        
+        if ($field === null) {
+            return $this->reduce(function($min, $item) {
+                return $min === null || $item < $min ? $item : $min;
+            }, null); // ✅ Správný initial value
+        }
+        
+        return $this->reduce(function($min, $item) use ($field) {
+            $value = $this->getFieldValue($item, $field);
+            return $min === null || ($value !== null && $value < $min) ? $value : $min;
+        }, null); // ✅ Správný initial value
     }
-    
-    if ($field === null) {
-        return $this->reduce(function($min, $item) {
-            return $min === null || $item < $min ? $item : $min;
-        }, null); // ✅ Přidán druhý parametr
-    }
-    
-    return $this->reduce(function($min, $item) use ($field) {
-        $value = $this->getFieldValue($item, $field);
-        return $min === null || ($value !== null && $value < $min) ? $value : $min;
-    }, null); // ✅ Přidán druhý parametr
-}
 
 /**
  * Najde maximální hodnotu v kolekci

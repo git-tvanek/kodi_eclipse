@@ -183,14 +183,22 @@ class TagCollection extends Collection
             return $tag->getAddons()->count() > 0;
         });
         
+        // ✅ OPRAVA: Manuální výpočet průměru místo neexistující average()
+        $averageUsage = 0;
+        if (!$usedTags->isEmpty()) {
+            $totalUsage = 0;
+            foreach ($usedTags as $tag) {
+                $totalUsage += $tag->getAddons()->count();
+            }
+            $averageUsage = round($totalUsage / $usedTags->count(), 1);
+        }
+        
         return [
             'total_tags' => $totalTags,
             'used_tags' => $usedTags->count(),
             'unused_tags' => $totalTags - $usedTags->count(),
             'usage_ratio' => $totalTags > 0 ? round($usedTags->count() / $totalTags, 2) : 0,
-            'average_usage' => $usedTags->isEmpty() ? 0 : round($usedTags->average(function(Tag $tag) {
-                return $tag->getAddons()->count();
-            }), 1),
+            'average_usage' => $averageUsage, // ✅ Správný výpočet
             'most_popular' => $this->getMostPopular(10)->toArray(),
             'trending' => $this->getTrending(30, 10)->toArray()
         ];
