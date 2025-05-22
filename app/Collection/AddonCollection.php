@@ -102,7 +102,8 @@ class AddonCollection extends Collection
         
         return round($totalRating / $this->count(), 2);
     }
-/**
+
+    /**
      * 🔥 Získá nejstahovanější doplňky
      */
     public function getMostDownloaded(int $limit = 10): self
@@ -220,19 +221,25 @@ class AddonCollection extends Collection
 
     /**
      * 📊 Rychlé metriky pro dashboard
+     * ✅ OPRAVENO: Bez problematických unique() volání
      */
     public function getQuickMetrics(): array
     {
+        // ✅ OPRAVA: Vlastní implementace unique counts
+        $categoryIds = [];
+        $authorIds = [];
+        
+        foreach ($this as $addon) {
+            $categoryIds[$addon->getCategory()->getId()] = true;
+            $authorIds[$addon->getAuthor()->getId()] = true;
+        }
+        
         return [
             'total' => $this->count(),
             'avg_rating' => round($this->getAverageRating(), 2),
             'total_downloads' => $this->getTotalDownloads(),
-            'categories_count' => $this->unique(function(Addon $addon) { 
-                return $addon->getCategory()->getId(); 
-            })->count(),
-            'authors_count' => $this->unique(function(Addon $addon) { 
-                return $addon->getAuthor()->getId(); 
-            })->count()
+            'categories_count' => count($categoryIds),
+            'authors_count' => count($authorIds)
         ];
     }
 
@@ -259,5 +266,4 @@ class AddonCollection extends Collection
             'meta' => $this->getQuickMetrics()
         ];
     }
-    
 }

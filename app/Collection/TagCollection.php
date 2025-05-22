@@ -140,39 +140,39 @@ class TagCollection extends Collection
     }
 
     /**
-     * 🎨 Tag cloud s váhami
-     */
-    public function generateTagCloud(int $minWeight = 1, int $maxWeight = 10): array
-    {
-        $tagData = $this->map(function(Tag $tag) {
-            return [
-                'tag' => $tag,
-                'count' => $tag->getAddons()->count()
-            ];
-        })->filter(function($item) {
-            return $item['count'] > 0;
-        });
+ * 🎨 Tag cloud s váhami
+ */
+public function generateTagCloud(int $minWeight = 1, int $maxWeight = 10): array
+{
+    // ✅ OPRAVA: Použít mapToCollection() místo map()
+    $tagData = $this->mapToCollection(function(Tag $tag) {
+        return [
+            'tag' => $tag,
+            'count' => $tag->getAddons()->count()
+        ];
+    })->filter(function($item) {
+        return $item['count'] > 0;
+    })->toArray(); // Převést zpět na array pro další zpracování
+    
+    if (empty($tagData)) return [];
+    
+    $counts = array_column($tagData, 'count');
+    $maxCount = max($counts);
+    $minCount = min($counts);
+    $range = max(1, $maxCount - $minCount);
+    
+    return array_map(function($item) use ($minCount, $range, $minWeight, $maxWeight) {
+        $normalizedWeight = $minWeight + (($item['count'] - $minCount) / $range) * ($maxWeight - $minWeight);
         
-        if (empty($tagData)) return [];
-        
-        $counts = array_column($tagData, 'count');
-        $maxCount = max($counts);
-        $minCount = min($counts);
-        $range = max(1, $maxCount - $minCount);
-        
-        return array_map(function($item) use ($minCount, $range, $minWeight, $maxWeight) {
-            $normalizedWeight = $minWeight + (($item['count'] - $minCount) / $range) * ($maxWeight - $minWeight);
-            
-            return [
-                'tag' => $item['tag'],
-                'count' => $item['count'],
-                'weight' => round($normalizedWeight),
-                'css_class' => 'tag-weight-' . round($normalizedWeight),
-                'font_size' => round(10 + ($normalizedWeight / $maxWeight) * 20)
-            ];
-        }, $tagData);
-    }
-
+        return [
+            'tag' => $item['tag'],
+            'count' => $item['count'],
+            'weight' => round($normalizedWeight),
+            'css_class' => 'tag-weight-' . round($normalizedWeight),
+            'font_size' => round(10 + ($normalizedWeight / $maxWeight) * 20)
+        ];
+    }, $tagData);
+}
     /**
      * 📊 Analýza použití tagů
      */

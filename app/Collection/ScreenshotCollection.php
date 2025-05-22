@@ -58,8 +58,7 @@ class ScreenshotCollection extends Collection
      */
     public function getMainScreenshot(): ?Screenshot
     {
-        $sorted = $this->sortBySortOrder('ASC');
-        return $sorted->first();
+        return $this->sortBySortOrder('ASC')->first();
     }
     
     /**
@@ -88,13 +87,6 @@ class ScreenshotCollection extends Collection
     public function groupByAddon(): array
     {
         return $this->groupBy('addon');
-    }
-      /**
-     * 🎯 Hlavní screenshot (první v pořadí)
-     */
-    public function getMainScreenshot(): ?Screenshot
-    {
-        return $this->sortBySortOrder('ASC')->first();
     }
 
     /**
@@ -169,5 +161,4 @@ class ScreenshotCollection extends Collection
                        ];
                    });
     }
-
 }
