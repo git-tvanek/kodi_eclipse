@@ -6,12 +6,11 @@ namespace App\Repository\Interface;
 
 use App\Collection\Collection;
 use App\Collection\PaginatedCollection;
-use Doctrine\ORM\QueryBuilder;
 
 /**
- * Comprehensive interface for base repository functionality
+ * Modernizovaný interface pro base repository s PHP 8+ features
  * 
- * @template T
+ * @template T of object
  */
 interface IBaseRepository
 {
@@ -34,21 +33,26 @@ interface IBaseRepository
      * Finds one entity by criteria
      * 
      * @param array $criteria
-     * @param array|null $orderBy
+     * @param array|null $orderBy ✅ Union type místo ?array
      * @return T|null
      */
-    public function findOneBy(array $criteria, ?array $orderBy = null): ?object;
+    public function findOneBy(array $criteria, array|null $orderBy = null): ?object;
     
     /**
      * Finds entities by criteria
      * 
      * @param array $criteria
-     * @param array|null $orderBy
-     * @param int|null $limit
-     * @param int|null $offset
+     * @param array|null $orderBy ✅ Union type
+     * @param int|null $limit ✅ Union type místo mixed
+     * @param int|null $offset ✅ Union type místo mixed
      * @return iterable<T>
      */
-    public function findBy(array $criteria = [], ?array $orderBy = null, $limit = null, $offset = null): iterable;
+    public function findBy(
+        array $criteria = [], 
+        array|null $orderBy = null, 
+        int|null $limit = null, 
+        int|null $offset = null
+    ): iterable;
     
     /**
      * Saves entity
@@ -84,7 +88,13 @@ interface IBaseRepository
      * @param string $orderDir
      * @return PaginatedCollection<T>
      */
-    public function findWithPagination(array $criteria = [], int $page = 1, int $itemsPerPage = 10, string $orderColumn = 'id', string $orderDir = 'ASC'): PaginatedCollection;
+    public function findWithPagination(
+        array $criteria = [], 
+        int $page = 1, 
+        int $itemsPerPage = 10, 
+        string $orderColumn = 'id', 
+        string $orderDir = 'ASC'
+    ): PaginatedCollection;
     
     /**
      * Checks if entity exists
@@ -98,10 +108,10 @@ interface IBaseRepository
      * Finds entity by unique attribute
      * 
      * @param string $attribute
-     * @param mixed $value
+     * @param string|int|float|bool $value ✅ Union types pro flexible hodnoty
      * @return T|null
      */
-    public function findByUniqueAttribute(string $attribute, $value): ?object;
+    public function findByUniqueAttribute(string $attribute, string|int|float|bool $value): ?object;
     
     /**
      * Finds with advanced filters
@@ -113,7 +123,13 @@ interface IBaseRepository
      * @param int $itemsPerPage
      * @return PaginatedCollection<T>
      */
-    public function findWithFilters(array $filters = [], string $sortBy = 'id', string $sortDir = 'ASC', int $page = 1, int $itemsPerPage = 10): PaginatedCollection;
+    public function findWithFilters(
+        array $filters = [], 
+        string $sortBy = 'id', 
+        string $sortDir = 'ASC', 
+        int $page = 1, 
+        int $itemsPerPage = 10
+    ): PaginatedCollection;
     
     /**
      * Finds by relation
@@ -131,27 +147,27 @@ interface IBaseRepository
      * 
      * @param int $id
      * @param array $relations
-     * @return array|null
+     * @return array|null ✅ Explicitní nullable array
      */
-    public function getWithRelated(int $id, array $relations = []): ?array;
+    public function getWithRelated(int $id, array $relations = []): array|null;
     
     /**
      * Checks if entity exists by attribute
      * 
      * @param string $attribute
-     * @param mixed $value
+     * @param string|int|float|bool $value ✅ Union types
      * @return bool
      */
-    public function existsByAttribute(string $attribute, $value): bool;
+    public function existsByAttribute(string $attribute, string|int|float|bool $value): bool;
     
     /**
      * Soft deletes entity
      * 
      * @param int $id
-     * @param string|null $reason
+     * @param string|null $reason ✅ Union type místo ?string
      * @return bool
      */
-    public function softDelete(int $id, ?string $reason = null): bool;
+    public function softDelete(int $id, string|null $reason = null): bool;
     
     /**
      * Restores soft-deleted entity
@@ -180,7 +196,7 @@ interface IBaseRepository
      * Executes transaction with callback
      * 
      * @param callable $callback
-     * @return mixed
+     * @return mixed ✅ KLÍČOVÁ ZMĚNA - přidaný mixed return type
      */
-    public function transaction(callable $callback);
+    public function transaction(callable $callback): mixed;
 }
