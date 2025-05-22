@@ -2,91 +2,104 @@
 
 declare(strict_types=1);
 
+// =============================================================================
+// ✅ KOMPLETNĚ OPRAVENÁ AddonCollection.php
+// =============================================================================
+
 namespace App\Collection;
 
 use App\Entity\Addon;
 
 /**
- * Typovaná kolekce pro doplňky
+ * Typovaná kolekce pro doplňky s ověřenými metodami
  * 
  * @extends Collection<Addon>
  */
 class AddonCollection extends Collection
 {
     /**
-     * Vrátí kolekci seřazenou podle počtu stažení
-     * 
-     * @param string $direction
-     * @return self
+     * ✅ Používá existující getter metody z Addon entity
      */
     public function sortByDownloads(string $direction = 'DESC'): self
     {
         return $this->sort(function(Addon $a, Addon $b) use ($direction) {
             return $direction === 'DESC' 
-                ? $b->downloads_count <=> $a->downloads_count
-                : $a->downloads_count <=> $b->downloads_count;
+                ? $b->getDownloadsCount() <=> $a->getDownloadsCount()
+                : $a->getDownloadsCount() <=> $b->getDownloadsCount();
         });
     }
     
     /**
-     * Vrátí kolekci seřazenou podle hodnocení
-     * 
-     * @param string $direction
-     * @return self
+     * ✅ Používá existující getter metody z Addon entity
      */
     public function sortByRating(string $direction = 'DESC'): self
     {
         return $this->sort(function(Addon $a, Addon $b) use ($direction) {
             return $direction === 'DESC' 
-                ? $b->rating <=> $a->rating
-                : $a->rating <=> $b->rating;
+                ? $b->getRating() <=> $a->getRating()
+                : $a->getRating() <=> $b->getRating();
         });
     }
     
     /**
-     * Filtruje doplňky podle kategorie
-     * 
-     * @param int $categoryId
-     * @return self
+     * ✅ Používá existující getter metody z Addon entity
      */
     public function filterByCategory(int $categoryId): self
     {
         return $this->filter(function(Addon $addon) use ($categoryId) {
-            return $addon->category_id === $categoryId;
+            return $addon->getCategory()->getId() === $categoryId;
         });
     }
     
     /**
-     * Vrátí doplňky splňující minimální hodnocení
-     * 
-     * @param float $minRating
-     * @return self
+     * ✅ Používá existující getter metody z Addon entity
      */
     public function filterByMinRating(float $minRating): self
     {
         return $this->filter(function(Addon $addon) use ($minRating) {
-            return $addon->rating >= $minRating;
+            return $addon->getRating() >= $minRating;
         });
     }
     
     /**
-     * Vrátí doplňky kompatibilní s danou verzí Kodi
-     * 
-     * @param string $version
-     * @return self
+     * ✅ Používá existující getter metody z Addon entity
      */
     public function filterByKodiVersion(string $version): self
     {
         return $this->filter(function(Addon $addon) use ($version) {
-            if ($addon->kodi_version_min && version_compare($version, $addon->kodi_version_min, '<')) {
+            $minVersion = $addon->getKodiVersionMin();
+            $maxVersion = $addon->getKodiVersionMax();
+            
+            if ($minVersion && version_compare($version, $minVersion, '<')) {
                 return false;
             }
             
-            if ($addon->kodi_version_max && version_compare($version, $addon->kodi_version_max, '>')) {
+            if ($maxVersion && version_compare($version, $maxVersion, '>')) {
                 return false;
             }
             
             return true;
         });
+    }
+    
+    // ✅ Dodatečné užitečné metody
+    public function getTotalDownloads(): int
+    {
+        return $this->reduce(function(int $total, Addon $addon): int {
+            return $total + $addon->getDownloadsCount();
+        }, 0);
+    }
+    
+    public function getAverageRating(): float
+    {
+        if ($this->isEmpty()) {
+            return 0.0;
+        }
+        
+        $totalRating = $this->reduce(function(float $total, Addon $addon): float {
+            return $total + $addon->getRating();
+        }, 0.0);
+        
+        return round($totalRating / $this->count(), 2);
     }
 }

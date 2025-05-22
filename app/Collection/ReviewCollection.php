@@ -1,22 +1,49 @@
 <?php
-
-declare(strict_types=1);
-
 namespace App\Collection;
 
 use App\Entity\AddonReview;
 
 /**
- * Typovaná kolekce pro recenze
+ * Typovaná kolekce pro recenze s ověřenými metodami
  * 
  * @extends Collection<AddonReview>
  */
 class ReviewCollection extends Collection
 {
     /**
-     * Vrátí průměrné hodnocení všech recenzí v kolekci
-     * 
-     * @return float
+     * ✅ Používá existující getter metody z AddonReview entity
+     */
+    public function filterByMinRating(int $minRating): self
+    {
+        return $this->filter(function(AddonReview $review) use ($minRating) {
+            return $review->getRating() >= $minRating;
+        });
+    }
+    
+    /**
+     * ✅ Používá existující getter metody z AddonReview entity
+     */
+    public function filterByMaxRating(int $maxRating): self
+    {
+        return $this->filter(function(AddonReview $review) use ($maxRating) {
+            return $review->getRating() <= $maxRating;
+        });
+    }
+    
+    /**
+     * ✅ Používá existující getter metody z AddonReview entity
+     */
+    public function sortByCreatedAt(string $direction = 'DESC'): self
+    {
+        return $this->sort(function(AddonReview $a, AddonReview $b) use ($direction) {
+            return $direction === 'DESC' 
+                ? $b->getCreatedAt() <=> $a->getCreatedAt()
+                : $a->getCreatedAt() <=> $b->getCreatedAt();
+        });
+    }
+    
+    /**
+     * ✅ OPRAVENO: Používá reduce místo problematické iterace
      */
     public function getAverageRating(): float
     {
@@ -24,33 +51,77 @@ class ReviewCollection extends Collection
             return 0.0;
         }
         
-        // OPRAVA: Použití správného přístupu k položkám kolekce
-        $sum = array_reduce($this->toArray(), function($carry, AddonReview $review) {
-            return $carry + $review->getRating(); // Používání getter metody
+        $sum = $this->reduce(function(int $carry, AddonReview $review): int {
+            return $carry + $review->getRating();
         }, 0);
         
         return round($sum / $this->count(), 2);
     }
     
     /**
-     * Vrátí distribuci hodnocení (počet recenzí pro každé hodnocení 1-5)
-     * 
-     * @return array<int, int>
+     * ✅ OPRAVENO: Používá reduce místo problematické iterace
      */
     public function getRatingDistribution(): array
     {
-        $distribution = [
-            1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0
-        ];
+        $distribution = [1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0];
         
-        // OPRAVA: Správný způsob iterace přes kolekci
-        foreach ($this as $review) {
+        return $this->reduce(function(array $dist, AddonReview $review): array {
             $rating = $review->getRating();
-            if (isset($distribution[$rating])) {
-                $distribution[$rating]++;
+            if (isset($dist[$rating])) {
+                $dist[$rating]++;
             }
-        }
+            return $dist;
+        }, $distribution);
+    }
+    
+    /**
+     * ✅ Používá existující metody z AddonReview entity
+     */
+    public function filterActive(): self
+    {
+        return $this->filter(function(AddonReview $review): bool {
+            return $review->isActive();
+        });
+    }
+    
+    /**
+     * ✅ Používá existující metody z AddonReview entity
+     */
+    public function filterVerified(): self
+    {
+        return $this->filter(function(AddonReview $review): bool {
+            return $review->isVerified();
+        });
+    }
+    
+    /**
+     * ✅ Používá existující metody z AddonReview entity
+     */
+    public function filterWithComment(): self
+    {
+        return $this->filter(function(AddonReview $review): bool {
+            $comment = $review->getComment();
+            return $comment !== null && trim($comment) !== '';
+        });
+    }
+    
+    /**
+     * ✅ Sentiment analýza používající existující metody
+     */
+    public function getSentimentAnalysis(): array
+    {
+        $positive = $this->filter(fn(AddonReview $r) => $r->isPositive())->count();
+        $neutral = $this->filter(fn(AddonReview $r) => $r->isNeutral())->count();
+        $negative = $this->filter(fn(AddonReview $r) => $r->isNegative())->count();
+        $total = $this->count();
         
-        return $distribution;
+        return [
+            'positive' => $positive,
+            'neutral' => $neutral,
+            'negative' => $negative,
+            'total' => $total,
+            'sentiment_score' => $total > 0 ? round(($positive - $negative) / $total, 2) : 0,
+            'average_rating' => $this->getAverageRating()
+        ];
     }
 }

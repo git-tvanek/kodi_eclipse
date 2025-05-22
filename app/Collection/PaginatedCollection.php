@@ -6,9 +6,11 @@ namespace App\Collection;
 
 use Doctrine\Common\Collections\Collection as DoctrineCollection;
 use Doctrine\Common\Collections\Criteria;
+use Doctrine\Common\Collections\Selectable;
+use Closure;
 
 /**
- * Stránkovaná kolekce - nyní s Doctrine podporou
+ * Unifikovaná stránkovaná kolekce s PHP 8+ features a factory methods
  * 
  * @template T
  */
@@ -17,42 +19,42 @@ class PaginatedCollection
     /** @var Collection<T> */
     private Collection $items;
     
-    /** @var int */
-    private int $totalCount;
-    
-    /** @var int */
-    private int $page;
-    
-    /** @var int */
-    private int $itemsPerPage;
-    
-    /** @var int */
-    private int $pages;
+    private readonly int $totalCount;
+    private readonly int $page;
+    private readonly int $itemsPerPage;
+    private readonly int $pages;
     
     /**
+     * ✅ CONSTRUCTOR s union types a readonly properties
+     * 
      * @param Collection<T>|DoctrineCollection<int, T>|iterable<T> $items
-     * @param int $totalCount
-     * @param int $page
-     * @param int $itemsPerPage
-     * @param int $pages
      */
     public function __construct(
-        $items, 
+        Collection|DoctrineCollection|iterable $items, 
         int $totalCount, 
         int $page, 
         int $itemsPerPage, 
         int $pages
     ) {
-        // Automaticky wrap do naší Collection třídy pokud není
-        $this->items = $items instanceof Collection ? $items : new Collection($items);
+        // ✅ Smart conversion podle typu
+        $this->items = match (true) {
+            $items instanceof Collection => $items,
+            $items instanceof DoctrineCollection => Collection::fromDoctrineCollection($items),
+            default => Collection::fromArray(is_array($items) ? $items : iterator_to_array($items))
+        };
+        
         $this->totalCount = $totalCount;
-        $this->page = $page;
-        $this->itemsPerPage = $itemsPerPage;
-        $this->pages = $pages;
+        $this->page = max(1, $page);
+        $this->itemsPerPage = max(1, $itemsPerPage);
+        $this->pages = max(0, $pages);
     }
     
+    // =========================================================================
+    // ✅ FACTORY METHODS pro různé use cases
+    // =========================================================================
+    
     /**
-     * Factory metoda pro vytvoření z Doctrine Collection
+     * Vytvoří z Doctrine Collection s automatickým stránkováním
      * 
      * @template U
      * @param DoctrineCollection<int, U> $doctrineCollection
@@ -73,16 +75,70 @@ class PaginatedCollection
         $items = $doctrineCollection->slice($offset, $itemsPerPage);
         
         return new self(
-            new Collection($items),
-            $totalCount,
-            $page,
-            $itemsPerPage,
-            $pages
+            items: Collection::fromArray($items),
+            totalCount: $totalCount,
+            page: $page,
+            itemsPerPage: $itemsPerPage,
+            pages: $pages
         );
     }
     
     /**
-     * Factory metoda s Doctrine Criteria
+     * Vytvoří z pole s manuálním nastavením
+     * 
+     * @template U
+     * @param array<U> $items
+     * @param int $totalCount
+     * @param int $page
+     * @param int $itemsPerPage
+     * @return PaginatedCollection<U>
+     */
+    public static function fromArray(
+        array $items,
+        int $totalCount,
+        int $page = 1,
+        int $itemsPerPage = 10
+    ): self {
+        $pages = (int) ceil($totalCount / $itemsPerPage);
+        
+        return new self(
+            items: Collection::fromArray($items),
+            totalCount: $totalCount,
+            page: $page,
+            itemsPerPage: $itemsPerPage,
+            pages: $pages
+        );
+    }
+    
+    /**
+     * Vytvoří z Custom Collection
+     * 
+     * @template U
+     * @param Collection<U> $collection
+     * @param int $totalCount
+     * @param int $page
+     * @param int $itemsPerPage
+     * @return PaginatedCollection<U>
+     */
+    public static function fromCollection(
+        Collection $collection,
+        int $totalCount,
+        int $page = 1,
+        int $itemsPerPage = 10
+    ): self {
+        $pages = (int) ceil($totalCount / $itemsPerPage);
+        
+        return new self(
+            items: $collection,
+            totalCount: $totalCount,
+            page: $page,
+            itemsPerPage: $itemsPerPage,
+            pages: $pages
+        );
+    }
+    
+    /**
+     * Factory s Doctrine Criteria
      * 
      * @template U
      * @param DoctrineCollection<int, U> $doctrineCollection
@@ -97,6 +153,11 @@ class PaginatedCollection
         int $page = 1,
         int $itemsPerPage = 10
     ): self {
+        // ✅ Kontrola zda collection podporuje matching
+        if (!$doctrineCollection instanceof Selectable) {
+            throw new \InvalidArgumentException('DoctrineCollection must implement Selectable interface for criteria matching');
+        }
+        
         // Nejdříve aplikujeme criteria
         $filteredCollection = $doctrineCollection->matching($criteria);
         
@@ -104,7 +165,26 @@ class PaginatedCollection
         return self::fromDoctrineCollection($filteredCollection, $page, $itemsPerPage);
     }
     
-    // ===== ZACHOVANÉ PŮVODNÍ METODY =====
+    /**
+     * ✅ Factory pro prázdnou kolekci
+     * 
+     * @template U
+     * @return PaginatedCollection<U>
+     */
+    public static function empty(): self
+    {
+        return new self(
+            items: Collection::empty(),
+            totalCount: 0,
+            page: 1,
+            itemsPerPage: 10,
+            pages: 0
+        );
+    }
+    
+    // =========================================================================
+    // ✅ GETTERS (readonly properties)
+    // =========================================================================
     
     /**
      * @return Collection<T>
@@ -114,74 +194,127 @@ class PaginatedCollection
         return $this->items;
     }
     
-    /**
-     * @return int
-     */
     public function getTotalCount(): int
     {
         return $this->totalCount;
     }
     
-    /**
-     * @return int
-     */
     public function getPage(): int
     {
         return $this->page;
     }
     
-    /**
-     * @return int
-     */
     public function getItemsPerPage(): int
     {
         return $this->itemsPerPage;
     }
     
-    /**
-     * @return int
-     */
     public function getPages(): int
     {
         return $this->pages;
     }
     
-    /**
-     * @return bool
-     */
+    // =========================================================================
+    // ✅ NAVIGATION METHODS
+    // =========================================================================
+    
     public function hasNextPage(): bool
     {
         return $this->page < $this->pages;
     }
     
-    /**
-     * @return bool
-     */
     public function hasPreviousPage(): bool
     {
         return $this->page > 1;
     }
     
-    /**
-     * @return int|null
-     */
     public function getNextPage(): ?int
     {
         return $this->hasNextPage() ? $this->page + 1 : null;
     }
     
-    /**
-     * @return int|null
-     */
     public function getPreviousPage(): ?int
     {
         return $this->hasPreviousPage() ? $this->page - 1 : null;
     }
     
+    public function getFirstPage(): int
+    {
+        return 1;
+    }
+    
+    public function getLastPage(): int
+    {
+        return max(1, $this->pages);
+    }
+    
     /**
-     * ZACHOVANÁ metoda - převede kolekci na standardní formát pole pro API nebo šablony
+     * ✅ Získá čísla stránek pro pagination UI
      * 
-     * @return array
+     * @param int $range Počet stránek kolem aktuální stránky
+     * @return array<int>
+     */
+    public function getPageRange(int $range = 5): array
+    {
+        $start = max(1, $this->page - floor($range / 2));
+        $end = min($this->pages, $start + $range - 1);
+        
+        // Adjust start if we're near the end
+        if ($end - $start + 1 < $range) {
+            $start = max(1, $end - $range + 1);
+        }
+        
+        return range((int)$start, (int)$end);
+    }
+    
+    // =========================================================================
+    // ✅ INFORMATION METHODS
+    // =========================================================================
+    
+    public function isEmpty(): bool
+    {
+        return $this->items->isEmpty();
+    }
+    
+    public function isNotEmpty(): bool
+    {
+        return !$this->isEmpty();
+    }
+    
+    public function getOffset(): int
+    {
+        return ($this->page - 1) * $this->itemsPerPage;
+    }
+    
+    public function getLimit(): int
+    {
+        return $this->itemsPerPage;
+    }
+    
+    /**
+     * ✅ Získá číslo prvního itemu na stránce
+     */
+    public function getFirstItemNumber(): int
+    {
+        return $this->isEmpty() ? 0 : $this->getOffset() + 1;
+    }
+    
+    /**
+     * ✅ Získá číslo posledního itemu na stránce
+     */
+    public function getLastItemNumber(): int
+    {
+        return $this->isEmpty() 
+            ? 0 
+            : min($this->totalCount, $this->getOffset() + $this->items->count());
+    }
+    
+    // =========================================================================
+    // ✅ TRANSFORMATION METHODS
+    // =========================================================================
+    
+    /**
+     * Převede na standardní pole pro API nebo šablony
      */
     public function toArray(): array
     {
@@ -190,74 +323,129 @@ class PaginatedCollection
             'totalCount' => $this->totalCount,
             'page' => $this->page,
             'itemsPerPage' => $this->itemsPerPage,
-            'pages' => $this->pages
+            'pages' => $this->pages,
+            'hasNextPage' => $this->hasNextPage(),
+            'hasPreviousPage' => $this->hasPreviousPage(),
+            'nextPage' => $this->getNextPage(),
+            'previousPage' => $this->getPreviousPage()
         ];
     }
     
-    // ===== NOVÉ METODY PRO DOCTRINE INTEGRACI =====
+    /**
+     * ✅ Převede na pole rekurzivně
+     */
+    public function toArrayRecursive(): array
+    {
+        return [
+            'items' => $this->items->toArrayRecursive(),
+            'totalCount' => $this->totalCount,
+            'page' => $this->page,
+            'itemsPerPage' => $this->itemsPerPage,
+            'pages' => $this->pages,
+            'hasNextPage' => $this->hasNextPage(),
+            'hasPreviousPage' => $this->hasPreviousPage(),
+            'nextPage' => $this->getNextPage(),
+            'previousPage' => $this->getPreviousPage(),
+            'firstItemNumber' => $this->getFirstItemNumber(),
+            'lastItemNumber' => $this->getLastItemNumber(),
+            'offset' => $this->getOffset(),
+            'limit' => $this->getLimit()
+        ];
+    }
     
     /**
-     * Aplikuje filtry na current items
-     * @param callable $predicate
-     * @return self
+     * Převede na JSON pro API
      */
-    public function filterItems(callable $predicate): self
+    public function toJson(int $flags = 0, int $depth = 512): string
+    {
+        return json_encode($this->toArrayRecursive(), $flags | JSON_THROW_ON_ERROR, $depth);
+    }
+    
+    // =========================================================================
+    // ✅ FUNCTIONAL METHODS (immutable operations)
+    // =========================================================================
+    
+    /**
+     * Aplikuje filtry na current items (vytvoří novou instanci)
+     * 
+     * @param Closure(T): bool $predicate
+     * @return self<T>
+     */
+    public function filterItems(Closure $predicate): self
     {
         $filteredItems = $this->items->filter($predicate);
         
         return new self(
-            $filteredItems,
-            $filteredItems->count(), // totalCount se změní
-            1, // resetujeme na první stránku
-            $this->itemsPerPage,
-            (int) ceil($filteredItems->count() / $this->itemsPerPage)
+            items: $filteredItems,
+            totalCount: $filteredItems->count(), // totalCount se změní
+            page: 1, // resetujeme na první stránku
+            itemsPerPage: $this->itemsPerPage,
+            pages: (int) ceil($filteredItems->count() / $this->itemsPerPage)
         );
     }
     
     /**
      * Aplikuje Doctrine Criteria na current items
+     * 
      * @param Criteria $criteria
-     * @return self
+     * @return self<T>
      */
     public function applyCriteria(Criteria $criteria): self
     {
         $filteredItems = $this->items->matching($criteria);
         
         return new self(
-            $filteredItems,
-            $filteredItems->count(),
-            1,
-            $this->itemsPerPage,
-            (int) ceil($filteredItems->count() / $this->itemsPerPage)
+            items: $filteredItems,
+            totalCount: $filteredItems->count(),
+            page: 1,
+            itemsPerPage: $this->itemsPerPage,
+            pages: (int) ceil($filteredItems->count() / $this->itemsPerPage)
         );
     }
     
     /**
-     * Sortuje items pomocí Doctrine Criteria
+     * Sortuje items pomocí field názvu
+     * 
      * @param string $field
      * @param string $direction
-     * @return self
+     * @return self<T>
      */
     public function sortBy(string $field, string $direction = 'ASC'): self
     {
         $sortedItems = $this->items->sortBy($field, $direction);
         
         return new self(
-            $sortedItems,
-            $this->totalCount,
-            $this->page,
-            $this->itemsPerPage,
-            $this->pages
+            items: $sortedItems,
+            totalCount: $this->totalCount,
+            page: $this->page,
+            itemsPerPage: $this->itemsPerPage,
+            pages: $this->pages
         );
     }
     
     /**
-     * Převede na JSON pro API
+     * ✅ Map items to different type
+     * 
+     * @template U
+     * @param Closure(T): U $mapper
+     * @return PaginatedCollection<U>
      */
-    public function toJson(): string
+    public function mapItems(Closure $mapper): PaginatedCollection
     {
-        return json_encode($this->toArray(), JSON_THROW_ON_ERROR);
+        $mappedArray = $this->items->map($mapper);
+        
+        return new PaginatedCollection(
+            items: Collection::fromArray($mappedArray),
+            totalCount: $this->totalCount,
+            page: $this->page,
+            itemsPerPage: $this->itemsPerPage,
+            pages: $this->pages
+        );
     }
+    
+    // =========================================================================
+    // ✅ METADATA METHODS
+    // =========================================================================
     
     /**
      * Získá metadata o stránkování
@@ -273,8 +461,13 @@ class PaginatedCollection
             'hasPreviousPage' => $this->hasPreviousPage(),
             'nextPage' => $this->getNextPage(),
             'previousPage' => $this->getPreviousPage(),
-            'offset' => ($this->page - 1) * $this->itemsPerPage,
-            'limit' => $this->itemsPerPage
+            'firstPage' => $this->getFirstPage(),
+            'lastPage' => $this->getLastPage(),
+            'offset' => $this->getOffset(),
+            'limit' => $this->getLimit(),
+            'firstItemNumber' => $this->getFirstItemNumber(),
+            'lastItemNumber' => $this->getLastItemNumber(),
+            'pageRange' => $this->getPageRange()
         ];
     }
     
@@ -287,7 +480,69 @@ class PaginatedCollection
             'itemsType' => get_class($this->items),
             'itemCount' => $this->items->count(),
             'totalCount' => $this->totalCount,
-            'pagination' => $this->getPaginationMetadata()
+            'isEmpty' => $this->isEmpty(),
+            'pagination' => $this->getPaginationMetadata(),
+            'underlyingCollectionType' => get_class($this->items->getDoctrineCollection())
         ];
+    }
+    
+    // =========================================================================
+    // ✅ CONVENIENCE METHODS
+    // =========================================================================
+    
+    /**
+     * Quick access to first item
+     * 
+     * @return T|null
+     */
+    public function firstItem()
+    {
+        return $this->items->first();
+    }
+    
+    /**
+     * Quick access to last item
+     * 
+     * @return T|null
+     */
+    public function lastItem()
+    {
+        return $this->items->last();
+    }
+    
+    /**
+     * Get item count on current page
+     */
+    public function getItemCount(): int
+    {
+        return $this->items->count();
+    }
+    
+    /**
+     * ✅ Check if this is the first page
+     */
+    public function isFirstPage(): bool
+    {
+        return $this->page === 1;
+    }
+    
+    /**
+     * ✅ Check if this is the last page
+     */
+    public function isLastPage(): bool
+    {
+        return $this->page === $this->pages || $this->pages === 0;
+    }
+    
+    /**
+     * ✅ Get percentage of completion
+     */
+    public function getCompletionPercentage(): float
+    {
+        if ($this->pages === 0) {
+            return 100.0;
+        }
+        
+        return round(($this->page / $this->pages) * 100, 2);
     }
 }
