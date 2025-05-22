@@ -545,4 +545,62 @@ class PaginatedCollection
         
         return round(($this->page / $this->pages) * 100, 2);
     }
+    /**
+     * 📊 Rozšířené metadata
+     */
+    public function getExtendedMetadata(): array
+    {
+        return array_merge($this->getPaginationMetadata(), [
+            'items_on_page' => $this->items->count(),
+            'progress_percentage' => $this->getCompletionPercentage(),
+            'showing_range' => sprintf('%d-%d of %d', 
+                $this->getFirstItemNumber(), 
+                $this->getLastItemNumber(), 
+                $this->totalCount
+            ),
+            'page_size_options' => [10, 25, 50, 100],
+            'navigation' => [
+                'first_page' => 1,
+                'last_page' => $this->getLastPage(),
+                'current_page' => $this->page,
+                'page_range' => $this->getPageRange(),
+                'has_previous' => $this->hasPreviousPage(),
+                'has_next' => $this->hasNextPage()
+            ]
+        ]);
+    }
+
+    /**
+     * 🎯 Export pro API s metadaty
+     */
+    public function toApiResponse(): array
+    {
+        return [
+            'data' => $this->items->toArray(),
+            'pagination' => $this->getExtendedMetadata(),
+            'links' => [
+                'first' => $this->getFirstPage(),
+                'last' => $this->getLastPage(),
+                'prev' => $this->getPreviousPage(),
+                'next' => $this->getNextPage()
+            ]
+        ];
+    }
+
+    /**
+     * 📈 Navigační informace
+     */
+    public function getNavigationInfo(): array
+    {
+        return [
+            'current_page' => $this->page,
+            'per_page' => $this->itemsPerPage,
+            'total' => $this->totalCount,
+            'last_page' => $this->getLastPage(),
+            'from' => $this->getFirstItemNumber(),
+            'to' => $this->getLastItemNumber(),
+            'path' => '', // Bude doplněno v controlleru
+            'has_more' => $this->hasNextPage()
+        ];
+    }
 }

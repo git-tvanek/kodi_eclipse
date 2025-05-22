@@ -143,4 +143,135 @@ class UserCollection extends Collection
             'unverified' => $this->count() - $this->filterVerified()->count()
         ];
     }
+
+    
+    /**
+     * 🏆 Nejaktivnější uživatelé
+     */
+    public function getMostActive(int $limit = 10): self
+    {
+        return $this->sort(function(User $a, User $b) {
+                return $b->getReviews()->count() <=> $a->getReviews()->count();
+            })
+            ->take($limit);
+    }
+
+    /**
+     * 🆕 Noví uživatelé
+     */
+    public function getNewUsers(int $days = 30): self
+    {
+        $since = new \DateTime("-{$days} days");
+        return $this->filter(function(User $user) use ($since) {
+            return $user->getCreatedAt() >= $since;
+        })->sortByCreatedAt('DESC');
+    }
+
+    /**
+     * 🔥 Nedávno aktivní uživatelé
+     */
+    public function getRecentlyActive(int $days = 7): self
+    {
+        $since = new \DateTime("-{$days} days");
+        return $this->filter(function(User $user) use ($since) {
+            return $user->getLastLogin() && $user->getLastLogin() >= $since;
+        })->sortBy('last_login', 'DESC');
+    }
+
+    /**
+     * ⭐ Top reviewers
+     */
+    public function getTopReviewers(int $minReviews = 5, int $limit = 10): self
+    {
+        return $this->filter(function(User $user) use ($minReviews) {
+                return $user->getReviews()->count() >= $minReviews;
+            })
+            ->sort(function(User $a, User $b) {
+                $scoreA = $this->calculateReviewerScore($a);
+                $scoreB = $this->calculateReviewerScore($b);
+                return $scoreB <=> $scoreA;
+            })
+            ->take($limit);
+    }
+
+    /**
+     * 🔍 Vyhledávání podle přihlašovacích údajů
+     */
+    public function searchByCredentials(string $query): self
+    {
+        if (empty(trim($query))) {
+            return $this;
+        }
+        
+        return $this->filter(function(User $user) use ($query) {
+            $searchableText = strtolower($user->getUsername() . ' ' . $user->getEmail());
+            return str_contains($searchableText, strtolower(trim($query)));
+        });
+    }
+
+    /**
+     * 📊 Uživatelé se statistikami
+     */
+    public function withDetailedStats(): array
+    {
+        return $this->map(function(User $user) {
+            return [
+                'user' => $user,
+                'stats' => [
+                    'review_count' => $user->getReviews()->count(),
+                    'account_age_days' => $this->calculateAccountAge($user),
+                    'last_activity' => $user->getLastLogin(),
+                    'is_active_reviewer' => $user->getReviews()->count() >= 5,
+                    'reviewer_score' => $this->calculateReviewerScore($user),
+                    'roles' => $user->getRoles()
+                ]
+            ];
+        });
+    }
+
+    /**
+     * 📈 Registrační trend
+     */
+    public function getRegistrationTrend(int $months = 12): array
+    {
+        $trends = [];
+        $now = new \DateTime();
+        
+        for ($i = $months - 1; $i >= 0; $i--) {
+            $date = clone $now;
+            $date->modify("-{$i} months");
+            $monthKey = $date->format('Y-m');
+            
+            $monthUsers = $this->filter(function(User $user) use ($date) {
+                return $user->getCreatedAt()->format('Y-m') === $date->format('Y-m');
+            });
+            
+            $trends[] = [
+                'month' => $monthKey,
+                'new_users' => $monthUsers->count(),
+                'verified_users' => $monthUsers->filterVerified()->count(),
+                'active_users' => $monthUsers->filterActive()->count()
+            ];
+        }
+        
+        return $trends;
+    }
+
+    // ========== POMOCNÉ METODY ==========
+
+    private function calculateReviewerScore(User $user): float
+    {
+        $reviewCount = $user->getReviews()->count();
+        $accountAge = $this->calculateAccountAge($user);
+        
+        // Skóre: počet recenzí * 10 + bonus za délku účtu
+        return ($reviewCount * 10) + min($accountAge / 30, 10); // Max 10 bodů za stáří
+    }
+
+    private function calculateAccountAge(User $user): int
+    {
+        $now = new \DateTime();
+        $diff = $now->diff($user->getCreatedAt());
+        return $diff->days;
+    }
 }

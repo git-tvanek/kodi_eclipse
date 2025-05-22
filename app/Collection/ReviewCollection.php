@@ -124,4 +124,144 @@ class ReviewCollection extends Collection
             'average_rating' => $this->getAverageRating()
         ];
     }
+
+     /**
+     * ⭐ Recenze s konkrétním hodnocením
+     */
+    public function withRating(int $rating): self
+    {
+        return $this->filter(function(AddonReview $review) use ($rating) {
+            return $review->getRating() === $rating;
+        });
+    }
+
+    /**
+     * 😊 Pozitivní recenze (4-5 hvězd)
+     */
+    public function getPositive(): self
+    {
+        return $this->filterByMinRating(4);
+    }
+
+    /**
+     * 😞 Negativní recenze (1-2 hvězdy)
+     */
+    public function getNegative(): self
+    {
+        return $this->filterByMaxRating(2);
+    }
+
+    /**
+     * 😐 Neutrální recenze (3 hvězdy)
+     */
+    public function getNeutral(): self
+    {
+        return $this->withRating(3);
+    }
+
+    /**
+     * 🆕 Nejnovější recenze
+     */
+    public function getRecent(int $days = 7): self
+    {
+        $since = new \DateTime("-{$days} days");
+        return $this->filter(function(AddonReview $review) use ($since) {
+            return $review->getCreatedAt() >= $since;
+        })->sortByCreatedAt('DESC');
+    }
+
+    /**
+     * 💡 Nejužitečnější recenze
+     */
+    public function getMostHelpful(int $limit = 10): self
+    {
+        return $this->filterWithComment()
+                   ->filterByMinRating(4)
+                   ->sort(function(AddonReview $a, AddonReview $b) {
+                       $scoreA = strlen($a->getComment() ?? '') + ($a->getRating() * 10);
+                       $scoreB = strlen($b->getComment() ?? '') + ($b->getRating() * 10);
+                       return $scoreB <=> $scoreA;
+                   })
+                   ->take($limit);
+    }
+
+    /**
+     * 🔍 Vyhledávání v komentářích
+     */
+    public function searchInComments(string $query): self
+    {
+        if (empty(trim($query))) {
+            return $this;
+        }
+        
+        return $this->filter(function(AddonReview $review) use ($query) {
+            $comment = strtolower($review->getComment() ?? '');
+            return str_contains($comment, strtolower(trim($query)));
+        });
+    }
+
+    /**
+     * 📈 Trend hodnocení v čase
+     */
+    public function getRatingTrend(int $months = 12): array
+    {
+        $trends = [];
+        $now = new \DateTime();
+        
+        for ($i = $months - 1; $i >= 0; $i--) {
+            $date = clone $now;
+            $date->modify("-{$i} months");
+            $monthKey = $date->format('Y-m');
+            
+            $monthReviews = $this->filter(function(AddonReview $review) use ($date) {
+                return $review->getCreatedAt()->format('Y-m') === $date->format('Y-m');
+            });
+            
+            $trends[] = [
+                'month' => $monthKey,
+                'count' => $monthReviews->count(),
+                'average_rating' => $monthReviews->isEmpty() ? 0 : $monthReviews->getAverageRating(),
+                'positive_ratio' => $monthReviews->isEmpty() ? 0 : 
+                    $monthReviews->getPositive()->count() / $monthReviews->count()
+            ];
+        }
+        
+        return $trends;
+    }
+
+    /**
+     * 🏆 Top reviewers
+     */
+    public function getTopReviewers(int $limit = 10): array
+    {
+        $reviewerStats = [];
+        
+        foreach ($this as $review) {
+            $userId = $review->getUser() ? $review->getUser()->getId() : null;
+            $userName = $review->getUser() ? $review->getUser()->getUsername() : ($review->getName() ?? 'Anonymous');
+            $key = $userId ?? $userName;
+            
+            if (!isset($reviewerStats[$key])) {
+                $reviewerStats[$key] = [
+                    'user' => $review->getUser(),
+                    'name' => $userName,
+                    'review_count' => 0,
+                    'total_rating' => 0
+                ];
+            }
+            
+            $reviewerStats[$key]['review_count']++;
+            $reviewerStats[$key]['total_rating'] += $review->getRating();
+        }
+        
+        foreach ($reviewerStats as &$stats) {
+            $stats['average_rating'] = round($stats['total_rating'] / $stats['review_count'], 2);
+        }
+        
+        uasort($reviewerStats, function($a, $b) {
+            return $b['review_count'] <=> $a['review_count'];
+        });
+        
+        return array_slice(array_values($reviewerStats), 0, $limit);
+    }
 }

@@ -89,4 +89,85 @@ class ScreenshotCollection extends Collection
     {
         return $this->groupBy('addon');
     }
+      /**
+     * 🎯 Hlavní screenshot (první v pořadí)
+     */
+    public function getMainScreenshot(): ?Screenshot
+    {
+        return $this->sortBySortOrder('ASC')->first();
+    }
+
+    /**
+     * 📸 Screenshoty s popisem
+     */
+    public function getWithDescription(): self
+    {
+        return $this->filterWithDescription();
+    }
+
+    /**
+     * 🎨 Screenshoty bez popisu
+     */
+    public function getWithoutDescription(): self
+    {
+        return $this->filter(function(Screenshot $screenshot) {
+            $description = $screenshot->getDescription();
+            return $description === null || trim($description) === '';
+        });
+    }
+
+    /**
+     * 🔄 Přeřadí screenshoty
+     */
+    public function reorderScreenshots(array $screenshotIds): self
+    {
+        $reordered = [];
+        
+        foreach ($screenshotIds as $index => $screenshotId) {
+            $screenshot = $this->findFirst(function(Screenshot $s) use ($screenshotId) {
+                return $s->getId() === $screenshotId;
+            });
+            
+            if ($screenshot) {
+                $reordered[] = $screenshot;
+            }
+        }
+        
+        return new static($reordered);
+    }
+
+    /**
+     * 📊 Screenshoty se statistikami
+     */
+    public function withStats(): array
+    {
+        return [
+            'total_count' => $this->count(),
+            'with_description' => $this->getWithDescription()->count(),
+            'without_description' => $this->getWithoutDescription()->count(),
+            'description_ratio' => $this->count() > 0 ? 
+                round($this->getWithDescription()->count() / $this->count(), 2) : 0,
+            'main_screenshot' => $this->getMainScreenshot(),
+            'by_addon' => $this->groupByAddon()
+        ];
+    }
+
+    /**
+     * 🎯 Export pro galerii
+     */
+    public function toGalleryFormat(): array
+    {
+        return $this->sortBySortOrder('ASC')
+                   ->map(function(Screenshot $screenshot) {
+                       return [
+                           'id' => $screenshot->getId(),
+                           'url' => $screenshot->getUrl(),
+                           'description' => $screenshot->getDescription(),
+                           'sort_order' => $screenshot->getSortOrder(),
+                           'addon_name' => $screenshot->getAddon()->getName(),
+                           'is_main' => $screenshot->getSortOrder() === 0
+                       ];
+                   });
+    }
+
 }

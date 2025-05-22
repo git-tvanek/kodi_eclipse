@@ -80,4 +80,119 @@ class TagCollection extends Collection
                 : $tag->getAddons()->count() >= $minCount;
         });
     }
+
+     /**
+     * 🔥 Nejpopulárnější tagy
+     */
+    public function getMostPopular(int $limit = 20): self
+    {
+        return $this->sort(function(Tag $a, Tag $b) {
+                return $b->getAddons()->count() <=> $a->getAddons()->count();
+            })
+            ->take($limit);
+    }
+
+    /**
+     * 📈 Trendové tagy
+     */
+    public function getTrending(int $days = 30, int $limit = 15): self
+    {
+        $since = new \DateTime("-{$days} days");
+        
+        return $this->filter(function(Tag $tag) use ($since) {
+                foreach ($tag->getAddons() as $addon) {
+                    if ($addon->getCreatedAt() >= $since) {
+                        return true;
+                    }
+                }
+                return false;
+            })
+            ->getMostPopular($limit);
+    }
+
+    /**
+     * 🔍 Vyhledávání podle názvu
+     */
+    public function searchByName(string $query): self
+    {
+        if (empty(trim($query))) {
+            return $this;
+        }
+        
+        return $this->filter(function(Tag $tag) use ($query) {
+            return str_contains(strtolower($tag->getName()), strtolower(trim($query)));
+        });
+    }
+
+    /**
+     * 📁 Tagy v konkrétní kategorii
+     */
+    public function usedInCategory(int $categoryId): self
+    {
+        return $this->filter(function(Tag $tag) use ($categoryId) {
+            foreach ($tag->getAddons() as $addon) {
+                if ($addon->getCategory()->getId() === $categoryId) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    /**
+     * 🎨 Tag cloud s váhami
+     */
+    public function generateTagCloud(int $minWeight = 1, int $maxWeight = 10): array
+    {
+        $tagData = $this->map(function(Tag $tag) {
+            return [
+                'tag' => $tag,
+                'count' => $tag->getAddons()->count()
+            ];
+        })->filter(function($item) {
+            return $item['count'] > 0;
+        });
+        
+        if (empty($tagData)) return [];
+        
+        $counts = array_column($tagData, 'count');
+        $maxCount = max($counts);
+        $minCount = min($counts);
+        $range = max(1, $maxCount - $minCount);
+        
+        return array_map(function($item) use ($minCount, $range, $minWeight, $maxWeight) {
+            $normalizedWeight = $minWeight + (($item['count'] - $minCount) / $range) * ($maxWeight - $minWeight);
+            
+            return [
+                'tag' => $item['tag'],
+                'count' => $item['count'],
+                'weight' => round($normalizedWeight),
+                'css_class' => 'tag-weight-' . round($normalizedWeight),
+                'font_size' => round(10 + ($normalizedWeight / $maxWeight) * 20)
+            ];
+        }, $tagData);
+    }
+
+    /**
+     * 📊 Analýza použití tagů
+     */
+    public function getUsageAnalysis(): array
+    {
+        $totalTags = $this->count();
+        $usedTags = $this->filter(function(Tag $tag) {
+            return $tag->getAddons()->count() > 0;
+        });
+        
+        return [
+            'total_tags' => $totalTags,
+            'used_tags' => $usedTags->count(),
+            'unused_tags' => $totalTags - $usedTags->count(),
+            'usage_ratio' => $totalTags > 0 ? round($usedTags->count() / $totalTags, 2) : 0,
+            'average_usage' => $usedTags->isEmpty() ? 0 : round($usedTags->average(function(Tag $tag) {
+                return $tag->getAddons()->count();
+            }), 1),
+            'most_popular' => $this->getMostPopular(10)->toArray(),
+            'trending' => $this->getTrending(30, 10)->toArray()
+        ];
+    }
 }

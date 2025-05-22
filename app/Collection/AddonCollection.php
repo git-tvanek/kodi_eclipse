@@ -102,4 +102,162 @@ class AddonCollection extends Collection
         
         return round($totalRating / $this->count(), 2);
     }
+/**
+     * 🔥 Získá nejstahovanější doplňky
+     */
+    public function getMostDownloaded(int $limit = 10): self
+    {
+        return $this->sortByDownloads('DESC')->take($limit);
+    }
+
+    /**
+     * ⭐ Získá nejlépe hodnocené doplňky
+     */
+    public function getBestRated(float $minRating = 4.0, int $limit = 10): self
+    {
+        return $this->filterByMinRating($minRating)
+                   ->sortByRating('DESC')
+                   ->take($limit);
+    }
+
+    /**
+     * 🆕 Získá nové doplňky za posledních N dní
+     */
+    public function getRecent(int $days = 7): self
+    {
+        $since = new \DateTime("-{$days} days");
+        return $this->filter(function(Addon $addon) use ($since) {
+            return $addon->getCreatedAt() >= $since;
+        })->sortBy('created_at', 'DESC');
+    }
+
+    /**
+     * 📈 Získá trendové doplňky
+     */
+    public function getTrending(int $limit = 20): self
+    {
+        return $this->filterByMinRating(3.0)
+                   ->filter(function(Addon $addon) {
+                       return $addon->getDownloadsCount() > 100;
+                   })
+                   ->getRecent(30)
+                   ->sortByDownloads('DESC')
+                   ->take($limit);
+    }
+
+    /**
+     * 📁 Filtruje podle více kategorií najednou
+     */
+    public function filterByCategories(array $categoryIds): self
+    {
+        return $this->filter(function(Addon $addon) use ($categoryIds) {
+            return in_array($addon->getCategory()->getId(), $categoryIds);
+        });
+    }
+
+    /**
+     * 👥 Filtruje podle více autorů najednou
+     */
+    public function filterByAuthors(array $authorIds): self
+    {
+        return $this->filter(function(Addon $addon) use ($authorIds) {
+            return in_array($addon->getAuthor()->getId(), $authorIds);
+        });
+    }
+
+    /**
+     * 🔍 Vyhledává v názvu a popisu
+     */
+    public function searchInContent(string $query): self
+    {
+        if (empty(trim($query))) {
+            return $this;
+        }
+        
+        $keywords = preg_split('/\s+/', trim($query));
+        
+        return $this->filter(function(Addon $addon) use ($keywords) {
+            $content = strtolower($addon->getName() . ' ' . ($addon->getDescription() ?? ''));
+            
+            foreach ($keywords as $keyword) {
+                if (str_contains($content, strtolower($keyword))) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    /**
+     * 🎮 Pokročilé filtrování pro Kodi verze
+     */
+    public function compatibleWithKodiRange(string $minVersion, string $maxVersion): self
+    {
+        return $this->filter(function(Addon $addon) use ($minVersion, $maxVersion) {
+            $addonMin = $addon->getKodiVersionMin() ?: '0.0';
+            $addonMax = $addon->getKodiVersionMax() ?: '999.0';
+            
+            return version_compare($addonMin, $maxVersion, '<=') && 
+                   version_compare($addonMax, $minVersion, '>=');
+        });
+    }
+
+    /**
+     * 🎯 Doporučené doplňky
+     */
+    public function getRecommended(int $limit = 10): self
+    {
+        return $this->filter(function(Addon $addon) {
+                return $addon->getRating() >= 3.5 && $addon->getDownloadsCount() >= 50;
+            })
+            ->sort(function(Addon $a, Addon $b) {
+                $scoreA = $a->getRating() * log($a->getDownloadsCount() + 1);
+                $scoreB = $b->getRating() * log($b->getDownloadsCount() + 1);
+                return $scoreB <=> $scoreA;
+            })
+            ->take($limit);
+    }
+
+    /**
+     * 📊 Rychlé metriky pro dashboard
+     */
+    public function getQuickMetrics(): array
+    {
+        return [
+            'total' => $this->count(),
+            'avg_rating' => round($this->getAverageRating(), 2),
+            'total_downloads' => $this->getTotalDownloads(),
+            'categories_count' => $this->unique(function(Addon $addon) { 
+                return $addon->getCategory()->getId(); 
+            })->count(),
+            'authors_count' => $this->unique(function(Addon $addon) { 
+                return $addon->getAuthor()->getId(); 
+            })->count()
+        ];
+    }
+
+    /**
+     * 🎯 Export pro API
+     */
+    public function toApiFormat(): array
+    {
+        return [
+            'items' => $this->map(function(Addon $addon) {
+                return [
+                    'id' => $addon->getId(),
+                    'name' => $addon->getName(),
+                    'slug' => $addon->getSlug(),
+                    'version' => $addon->getVersion(),
+                    'rating' => $addon->getRating(),
+                    'downloads' => $addon->getDownloadsCount(),
+                    'author' => $addon->getAuthor()->getName(),
+                    'category' => $addon->getCategory()->getName(),
+                    'icon_url' => $addon->getIconUrl(),
+                    'created_at' => $addon->getCreatedAt()->format('Y-m-d H:i:s')
+                ];
+            }),
+            'meta' => $this->getQuickMetrics()
+        ];
+    }
+    
 }

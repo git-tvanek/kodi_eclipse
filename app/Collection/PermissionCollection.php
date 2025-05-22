@@ -102,4 +102,106 @@ class PermissionCollection extends Collection
             return $permission->getResource() === $resource && $permission->getAction() === $action;
         });
     }
+
+    /**
+     * 📊 Seskupení podle zdroje
+     */
+    public function groupByResource(): array
+    {
+        $grouped = [];
+        
+        foreach ($this as $permission) {
+            $resource = $permission->getResource();
+            if (!isset($grouped[$resource])) {
+                $grouped[$resource] = [];
+            }
+            $grouped[$resource][] = $permission;
+        }
+        
+        return array_map(function($permissions) {
+            return new static($permissions);
+        }, $grouped);
+    }
+
+    /**
+     * 🎯 Seskupení podle akce
+     */
+    public function groupByAction(): array
+    {
+        $grouped = [];
+        
+        foreach ($this as $permission) {
+            $action = $permission->getAction();
+            if (!isset($grouped[$action])) {
+                $grouped[$action] = [];
+            }
+            $grouped[$action][] = $permission;
+        }
+        
+        return array_map(function($permissions) {
+            return new static($permissions);
+        }, $grouped);
+    }
+
+    /**
+     * 🔍 Filtruje podle zdroje
+     */
+    public function filterByResource(string $resource): self
+    {
+        return $this->filter(function(Permission $permission) use ($resource) {
+            return $permission->getResource() === $resource;
+        });
+    }
+
+    /**
+     * ⚡ Filtruje podle akce
+     */
+    public function filterByAction(string $action): self
+    {
+        return $this->filter(function(Permission $permission) use ($action) {
+            return $permission->getAction() === $action;
+        });
+    }
+
+    /**
+     * 🎨 Vytvoří matrix oprávnění
+     */
+    public function createPermissionMatrix(): array
+    {
+        $resources = $this->unique('resource');
+        $actions = $this->unique('action');
+        $matrix = [];
+        
+        foreach ($resources as $resource) {
+            $matrix[$resource] = [];
+            foreach ($actions as $action) {
+                $permission = $this->findFirst(function($p) use ($resource, $action) {
+                    return $p->getResource() === $resource && $p->getAction() === $action;
+                });
+                $matrix[$resource][$action] = $permission;
+            }
+        }
+        
+        return $matrix;
+    }
+
+    /**
+     * 📋 Získá seznam všech zdrojů
+     */
+    public function getUniqueResources(): array
+    {
+        return array_unique($this->map(function(Permission $permission) {
+            return $permission->getResource();
+        }));
+    }
+
+    /**
+     * 🎯 Získá seznam všech akcí
+     */
+    public function getUniqueActions(): array
+    {
+        return array_unique($this->map(function(Permission $permission) {
+            return $permission->getAction();
+        }));
+    }
 }
