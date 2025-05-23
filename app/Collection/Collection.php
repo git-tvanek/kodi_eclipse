@@ -544,16 +544,17 @@ class Collection implements Countable, Iterator, ArrayAccess
      * @param U $initial
      * @return U
      */
-    public function reduce(Closure $callback, mixed $initial): mixed
-    {
-        $accumulator = $initial;
-        
-        foreach ($this->collection as $item) {
-            $accumulator = $callback($accumulator, $item);
-        }
-        
-        return $accumulator;
+public function reduce(Closure $callback, mixed $initial = null): mixed
+{
+    $accumulator = $initial;
+    
+    foreach ($this->collection as $item) {
+        $accumulator = $callback($accumulator, $item);
     }
+    
+    return $accumulator;
+}
+
     
     /**
      * Převede kolekci na asociativní pole podle klíče
@@ -728,16 +729,34 @@ class Collection implements Countable, Iterator, ArrayAccess
      * @param T $value
      */
     public function offsetSet($offset, $value): void
-    {
-        if (is_null($offset)) {
-            $this->collection->add($value);
-        } else {
-            $items = $this->collection->toArray();
-            $items[$offset] = $value;
-            $this->collection = new ArrayCollection($items);
-        }
-        $this->refreshIteratorCache();
+{
+    // Přidat validaci typu
+    if (!is_null($offset) && !is_int($offset)) {
+        throw new \InvalidArgumentException(
+            sprintf(
+                'Collection offset must be integer or null, %s given',
+                gettype($offset)
+            )
+        );
     }
+    
+    if (is_null($offset)) {
+        $this->collection->add($value);
+    } else {
+        // Validace rozsahu
+        if ($offset < 0) {
+            throw new \OutOfBoundsException(
+                sprintf('Offset cannot be negative, %d given', $offset)
+            );
+        }
+        
+        $items = $this->collection->toArray();
+        $items[$offset] = $value;
+        // Použít array_values pro reindexaci a odstranění děr
+        $this->collection = new ArrayCollection(array_values($items));
+    }
+    $this->refreshIteratorCache();
+}
     
     public function offsetUnset($offset): void
     {
@@ -813,22 +832,22 @@ class Collection implements Countable, Iterator, ArrayAccess
  * @return mixed Minimální hodnota nebo null pro prázdnou kolekci
  */
 public function min(?string $field = null): mixed
-    {
-        if ($this->isEmpty()) {
-            return null;
-        }
-        
-        if ($field === null) {
-            return $this->reduce(function($min, $item) {
-                return $min === null || $item < $min ? $item : $min;
-            }, null); // ✅ Správný initial value
-        }
-        
-        return $this->reduce(function($min, $item) use ($field) {
-            $value = $this->getFieldValue($item, $field);
-            return $min === null || ($value !== null && $value < $min) ? $value : $min;
-        }, null); // ✅ Správný initial value
+{
+    if ($this->isEmpty()) {
+        return null;
     }
+    
+    if ($field === null) {
+        return $this->reduce(function($min, $item) {
+            return $min === null || $item < $min ? $item : $min;
+        }, null); // ✅ Přidán druhý parametr
+    }
+    
+    return $this->reduce(function($min, $item) use ($field) {
+        $value = $this->getFieldValue($item, $field);
+        return $min === null || ($value !== null && $value < $min) ? $value : $min;
+    }, null); // ✅ Přidán druhý parametr
+}
 
 /**
  * Najde maximální hodnotu v kolekci
@@ -838,7 +857,7 @@ public function min(?string $field = null): mixed
  */
 public function max(?string $field = null): mixed
 {
-   if ($this->isEmpty()) {
+    if ($this->isEmpty()) {
         return null;
     }
     
@@ -1449,5 +1468,81 @@ public function search(string $query, array $fields, bool $caseSensitive = false
         
         return false;
     });
+}
+public function diff(Collection $other): static
+{
+    $thisArray = $this->toArray();
+    $otherArray = $other->toArray();
+    
+    // Pro objekty musíme použít vlastní porovnání
+    $diff = [];
+    foreach ($thisArray as $item) {
+        $found = false;
+        foreach ($otherArray as $otherItem) {
+            if ($item === $otherItem) {
+                $found = true;
+                break;
+            }
+        }
+        if (!$found) {
+            $diff[] = $item;
+        }
     }
+    
+    return new static($diff);
+}
+
+public function intersect(Collection $other): static
+{
+    $thisArray = $this->toArray();
+    $otherArray = $other->toArray();
+    
+    // Pro objekty musíme použít vlastní porovnání
+    $intersection = [];
+    foreach ($thisArray as $item) {
+        foreach ($otherArray as $otherItem) {
+            if ($item === $otherItem) {
+                $intersection[] = $item;
+                break;
+            }
+        }
+    }
+    
+    return new static($intersection);
+}
+
+// 6. Přidat type checking
+public function ensureType(string $className): static
+{
+    if (!class_exists($className) && !interface_exists($className)) {
+        throw new \InvalidArgumentException(
+            sprintf('Class or interface %s does not exist', $className)
+        );
+    }
+    
+    foreach ($this as $index => $item) {
+        if (!$item instanceof $className) {
+            throw new \InvalidArgumentException(
+                sprintf(
+                    'Element at index %d is not an instance of %s, got %s',
+                    $index,
+                    $className,
+                    is_object($item) ? get_class($item) : gettype($item)
+                )
+            );
+        }
+    }
+    
+    return $this;
+}
+
+public function containsAll(iterable $elements): bool
+{
+    foreach ($elements as $element) {
+        if (!$this->contains($element)) {
+            return false;
+        }
+    }
+    return true;
+}
 }
