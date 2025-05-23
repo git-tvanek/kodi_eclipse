@@ -24,7 +24,7 @@ services:
     categoryFactory:
         class: App\Factory\CategoryFactory
     reviewFactory:
-        class: App\Factory\ReviewFactory
+        class: App\Factory\AddonReviewFactory
     screenshotFactory:
         class: App\Factory\ScreenshotFactory
     tagFactory:
@@ -106,7 +106,7 @@ services:
         type: App\Factory\Interface\ICategoryFactory
     reviewFactoryAlias:
         factory: @reviewFactory
-        type: App\Factory\Interface\IReviewFactory
+        type: App\Factory\Interface\IAddonReviewFactory
     screenshotFactoryAlias:
         factory: @screenshotFactory
         type: App\Factory\Interface\IScreenshotFactory
